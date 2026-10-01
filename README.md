@@ -19,16 +19,12 @@ The runner replaced those sessions with a written queue of small tasks, one fres
 
 ![Share of commits before the runner and with it: repairs 33% then 3%, paperwork only 24% then 1%, tied to a written task 0% then 99%](docs/before-after.svg)
 
-### A correction
+What did the work, on this project's record:
 
-An earlier version of this page said that 17% of queue runs finished a task while the rules were written down but not enforced, against 88% once a commit hook enforced them, and concluded that the hook made the difference. That comparison was wrong and is withdrawn.
-
-- In the six days before the hook there were 295 task runs. 158 of them were the same few parked tasks being started again, about ten seconds at a time, by a fault in the queue on one morning. They were not attempts at work.
-- Without them, 102 of 137 runs finished a task (74%) and a task took 1.39 sessions. In the four days after the hook, 128 of 147 runs finished (87%) and a task took 1.16 sessions.
-- The hook arrived on the same day as a rewritten session prompt, the single reviewer and a rewritten task file. The rise from 74% to 87% cannot be put down to the hook alone.
-- In those four days the hook refused a commit in 2 of 146 task sessions, and one of the two refusals was the check's own mistake. Over the same days the one reviewer reported at least one defect in about four of every five task commits (97 of 121, counted from the wording of the commit messages), and the session fixed or answered each before committing.
-
-What this project's record supports is narrower than the first claim. Small written tasks, a fresh session for each and one reviewer on each diff did most of the work. The commit hook is a cheap backstop that rarely fires. The gap was something nobody checked. Over more than three days, thirteen task commits each noted that tests were already failing before their change, and carried on; nothing told the owner. The runner now runs the project's own check itself, before each task and on each task's commit (`CHECK_CMD`).
+- **Small written tasks and a fresh session for each.** In the six days before the commit hook existed, with the queue and the task file already in use, 74% of task runs ended in a finished task and a task took 1.39 sessions. In the four days after, 87% and 1.16. The hook arrived on the same day as a rewritten session prompt and the single reviewer, so the rise cannot be put down to any one of them.
+- **One reviewer on every diff.** It reported at least one defect in about four of every five task commits, 3.6 on average for the largest tasks, and the session fixed or answered each before committing.
+- **The commit hook is a backstop.** In those four days it refused a commit in 2 of 146 sessions.
+- **The gap was something nobody checked.** Over more than three days, thirteen task commits each noted that tests were already failing before their change, and carried on; nothing told the owner. The runner now runs the project's own check itself, before each task and on each task's commit (`CHECK_CMD`).
 
 How to read these numbers:
 
@@ -36,7 +32,7 @@ How to read these numbers:
 - "Repaired earlier work" is counted from words in commit subjects. It misses repairs described another way and counts some new work that mentions a fix.
 - Token use before the runner was not measured, so this page makes no claim about tokens saved. With the runner, the median task session used about 7 million tokens with its reviewer, 97% of them cached re-reads of the same context. A session re-reads everything it holds on every turn, so what it holds at the start is paid for about forty times. Half of that starting load was descriptions of tools no task session ever called; the kit now starts Claude Code sessions with the five tools they use (`CLAUDE_TOOLS`), which measured 14,000 tokens lighter per turn, an estimated tenth of all tokens in that project.
 - The two periods differ in more than the runner: the work itself changed, and so did the models.
-- Every figure on this page can be recounted from the project's git history and the runner's own logs. The correction above came from doing that.
+- Every figure on this page can be recounted from the project's git history and the runner's own logs.
 
 ## What it is
 
@@ -83,7 +79,7 @@ Task sessions run unattended and may run shell commands in the repositories you 
 - **Gates run independently.** Its reviewer re-runs the test suite and does not take the implementer's word. Here the runner does that itself, as `CHECK_CMD`.
 - **Three unproductive runs are a fault in the system.** Here that is the pause after three different tasks stop in a row.
 
-Reading that kit against this one is also what led to recounting the figures above and to measuring where the tokens go.
+Reading that kit against this one is also what led to measuring where the tokens go.
 
 Considered and not taken, with the reason for each:
 

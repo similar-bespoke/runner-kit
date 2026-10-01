@@ -15,8 +15,11 @@
 # not [x] and not waiting. A task waits while runs/waiting/<id> exists; its
 # first line is a shasum of DECISIONS.md when it was parked, and it is tried
 # again once that hash changes (the owner answers by appending to DECISIONS.md). The
-# hash leaves out entries ending "(supervising session, <date>)", so one
-# supervising session's decision does not release every parked task. A task
+# hash is taken over the entries only (not headings or blank lines), leaves out
+# any entry signed "(supervising session, <date>)", and is taken before the
+# stop session starts, so one supervising session's decision does not release
+# every parked task and an answer written while a stop session runs is not
+# lost. A task whose prerequisite is parked is parked with it, with no session. A task
 # with no M column, or built at [~] with R: owner, is parked at once. Any exit
 # of run_task.sh but 0 starts a supervising session (SUPERVISOR-PROMPT.md, on
 # the adapter and model of the letter named by SUPERVISOR in runner.conf) and
@@ -72,21 +75,22 @@ import re, sys
 out, block = [], []
 def flush():
     text = " ".join(" ".join(block).split())
-    if not re.search(r"\(supervising session, [^()]*\)\.?$", text): out.extend(block)
+    if text and not text.startswith("#") and not re.search(r"(?i)\((?:supervising|stop) session, [^()]*\)", text):
+        out.append(text)
     block.clear()
 for line in open(sys.argv[1]):
     if line.startswith(("- ", "#")) or not line.strip(): flush()
     block.append(line)
 flush()
-sys.stdout.write("".join(out))
+sys.stdout.write("\n".join(out))
 PY
 }
 heading() { grep -m1 "^### ${1//./\\.} " "$TASKS"; }
 
 # Park a task for the owner: the waiting file holds the DECISIONS.md hash, then why.
 park() {
-  local id="$1" why="$2"
-  { decisions_hash; print -r -- "$why"; } > "$WAITING/$id"
+  local id="$1" why="$2" hash="${3:-}"
+  { print -r -- "${hash:-$(decisions_hash)}"; print -r -- "$why"; } > "$WAITING/$id"
   log "task $id parked: $why"
 }
 
@@ -169,6 +173,7 @@ handle_stop() {
   fi
   print $((rounds+1)) > "$RUNS/$id.rounds"
   logs=("$RUNS"/$id-*.log(Nom)); tasklog="${logs[1]:-(no log)}"
+  local before="$(decisions_hash)"   # an answer written while the stop session runs must still release the task
   supervise "$id" "$stop" "$tasklog"
   verdict="$SUPERVISE_VERDICT"
   log "verdict: ${verdict:-(none)}"
@@ -185,11 +190,11 @@ handle_stop() {
         notify "$PROJECT queue: task $id parked; its supervising session gave an unreadable verdict: $verdict"
       fi;;
     waiting)
-      park "$id" "$verdict"
+      park "$id" "$verdict" "$before"
       notify "$PROJECT queue: task $id waits for you. ${w[4,-1]}";;
-    skip) park "$id" "$verdict";;
+    skip) park "$id" "$verdict" "$before";;
     *)
-      park "$id" "no supervisor verdict: $stop"
+      park "$id" "no supervisor verdict: $stop" "$before"
       notify "$PROJECT queue: task $id stopped and its supervising session gave no verdict; parked for you. $stop";;
   esac
 }
@@ -198,10 +203,11 @@ handle_stop() {
 typeset -A SEEN
 WAITING_IDS=()
 LAST_STOP=""     # the task one_pass ran, if it stopped; empty if it finished or nothing ran
+SETUP_FAULT=""   # why run_task.sh could not start a task (exit 2), if it could not
 one_pass() {
-  local line id head hash why
+  local line id head hash why need
   local -a words
-  WAITING_IDS=(); LAST_STOP=""
+  WAITING_IDS=(); LAST_STOP=""; SETUP_FAULT=""
   [ -f "$ORDER" ] || { log "no queue file at $ORDER"; return 1; }
   local -a queue=()
   while IFS= read -r line || [ -n "$line" ]; do
@@ -217,6 +223,7 @@ one_pass() {
     fi
     case "$head" in *"[x]"*)
       [ -n "${SEEN[done:$id]:-}" ] || { log "task $id already done; skipping"; SEEN[done:$id]=1; }
+      rm -f "$WAITING/$id"
       continue;;
     esac
     if [ -f "$WAITING/$id" ]; then
@@ -237,13 +244,25 @@ one_pass() {
       [ "$why" = "built, waits for the owner's yes at [~]" ] || notify "$PROJECT queue: task $id is built and waits for your yes; parked. $head"
       continue
     fi
+    need="$(python3 "$BIN/runner_checks.py" start "$id" 2>/dev/null | sed -n 's/.*: task [^ ]* needs \([^, ]*\), which is not done.*/\1/p' | head -1)"
+    if [ -n "$need" ] && [ -f "$WAITING/$need" ]; then
+      park "$id" "needs $need, which waits"; WAITING_IDS+=("$id")
+      continue
+    fi
     log "task $id: running run_task.sh $id"
     if [ "$DRY" = 1 ]; then log "(dry: would run task $id)"; return 0; fi
     rm -f "$RUNS/$id.stop"
     local rc=0
-    "$BIN/run_task.sh" "$id" || rc=$?
+    "$BIN/run_task.sh" "$id" 2>"$RUNS/$id.err" || rc=$?
+    [ -s "$RUNS/$id.err" ] && cat "$RUNS/$id.err" >&2
     log "task $id: run_task.sh exit $rc"
-    if [ $rc = 0 ]; then rm -f "$RUNS/$id.rounds" "$RUNS/$id.stop"; else handle_stop "$id" "$rc"; fi
+    if [ $rc = 0 ]; then rm -f "$RUNS/$id.rounds" "$RUNS/$id.stop"
+    elif [ $rc = 2 ]; then
+      # run_task.sh could not start the task: a setting, a missing command, a
+      # missing file. No session can put that right, so none is started.
+      SETUP_FAULT="task $id could not be started: $(tail -1 "$RUNS/$id.err" 2>/dev/null)"
+      log "$SETUP_FAULT"
+    else handle_stop "$id" "$rc"; fi
     return 0
   done
   return 1
@@ -254,11 +273,11 @@ workspace_hash() {
   cat "$TASKS" "$ORDER" "$DECISIONS" "$DIR/SESSION-PROMPT.md" "$DIR/SUPERVISOR-PROMPT.md" "$RUNNER_CONF" 2>/dev/null | sha | cut -d' ' -f1
 }
 
-# Different tasks have stopped one after another: tell the owner once and wait
-# for a change to the workspace, the go file or the stop file.
-pause_for_streak() {
+# Pause: tell the owner once why, and wait for a change to the workspace, the go
+# file or the stop file.
+pause() {
   local before="$(workspace_hash)"
-  notify "$PROJECT queue paused: $# different tasks stopped one after another ($*). A cause they share is likelier than $# separate faults: look at SESSION-PROMPT.md, the model, the project's check and this machine. The queue starts again when TASKS.md, RUN-ORDER.md, DECISIONS.md, a prompt or runner.conf changes, or on: touch $GOFILE"
+  notify "$PROJECT queue paused: $1 The queue starts again when TASKS.md, RUN-ORDER.md, DECISIONS.md, a prompt or runner.conf changes, or on: touch $GOFILE"
   while [ ! -f "$STOPFILE" ] && [ ! -f "$GOFILE" ] && [ "$(workspace_hash)" = "$before" ]; do sleep "$POLL"; done
   rm -f "$GOFILE"
   [ -f "$STOPFILE" ] || log "queue resumed after its pause"
@@ -285,8 +304,9 @@ main() {
       idle_sent=0
       if [ -n "$LAST_STOP" ]; then streak+=("$LAST_STOP"); elif [ "$DRY" != 1 ]; then streak=(); fi
       if [ "$limit" -gt 0 ] && [ ${#streak} -ge "$limit" ] && [ "$ONCE" != 1 ]; then
-        pause_for_streak "${streak[@]}"; streak=()
+        pause "${#streak} different tasks stopped one after another (${streak[*]}). A cause they share is likelier than ${#streak} separate faults: look at SESSION-PROMPT.md, the model, the project's check and this machine."; streak=()
       fi
+      if [ -n "$SETUP_FAULT" ] && [ "$ONCE" != 1 ]; then pause "$SETUP_FAULT"; streak=(); fi
     else
       if [ $idle_sent = 0 ]; then
         notify "$PROJECT queue idle. Waiting: ${WAITING_IDS[*]:-none}."

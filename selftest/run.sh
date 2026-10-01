@@ -122,6 +122,8 @@ ADAPTER_S=${ADAPTER:-none}
 MODEL_S=${(q-)MODEL}
 ADAPTER_T=stub
 MODEL_T=none
+ADAPTER_U=stub
+MODEL_U=
 DEFAULT_BUILDER=S
 DEFAULT_EFFORT=$EFFORT
 DEFAULT_REVIEWER='S $EFFORT'
@@ -180,6 +182,15 @@ G1: the list can be read at a glance. Files: src/notes.txt. Run by the stand-in 
 ### 3.1 A question for the owner is asked once [ ]  M: T medium, R: T medium
 G1: the list can be read at a glance. Files: src/notes.txt. Run by the stand-in session.
 
+### 3.2 An answer written while the stop session runs is not lost [ ]  M: T medium, R: T medium
+G1: the list can be read at a glance. Files: src/notes.txt. Run by the stand-in session.
+
+### 3.3 A task behind a question waits with it [ ]  M: T medium, R: T medium
+G1: the list can be read at a glance. Files: src/notes.txt. Needs 3.1. Run by the stand-in session.
+
+### 5.1 A task whose letter has no model [ ]  M: U medium, R: T medium
+G1: the list can be read at a glance. Files: src/notes.txt. Never started.
+
 ### 4.1 A task that stops [ ]  M: T medium, R: T medium
 G1: the list can be read at a glance. Files: src/notes.txt. Run by the stand-in session.
 
@@ -209,6 +220,8 @@ if [[ "$STUB_PROMPT" == *"You are the supervising session for"* ]]; then
     3.1) print -r -- "- Task 3.1 asks the owner whether notes are kept (supervising session, $(date +%Y-%m-%d))" >> "$WS/DECISIONS.md"
          git -C "$WS" add DECISIONS.md && git -C "$WS" commit -q -m "docs: 3.1 waits for the owner" || exit 1
          print "SUPERVISOR: waiting 3.1 Should notes be kept? Recommended: yes.";;
+    3.2) print -r -- "- Dated notes are kept too. (owner, $(date +%Y-%m-%d))" >> "$WS/DECISIONS.md"   # the owner, answering while this session runs
+         print "SUPERVISOR: waiting 3.2 Should dated notes be kept? Recommended: yes.";;
     *)   print "SUPERVISOR: skip $ID the self-test skips it";;
   esac
   exit 0
@@ -221,7 +234,9 @@ case "$ID" in
          git -C "$APP" rm -q src/BROKEN && git -C "$APP" commit -q -m "2.2: the check passes again" || exit 1
          print "RUNNER: done $(git -C "$APP" rev-parse --short HEAD)"
        fi;;
-  3.1) if grep -q "^- Notes are kept. (owner, " "$WS/DECISIONS.md"; then print -r -- "$ID" >> "$APP/src/notes.txt"; commit_app "notes are kept"; mark_done
+  3.2) if grep -q "^- Dated notes are kept too. (owner, " "$WS/DECISIONS.md"; then print -r -- "$ID" >> "$APP/src/notes.txt"; commit_app "dated notes"; mark_done
+       else print "RUNNER: question Should dated notes be kept? Recommended: yes."; fi;;
+  3.1|3.3) if grep -q "^- Notes are kept. (owner, " "$WS/DECISIONS.md"; then print -r -- "$ID" >> "$APP/src/notes.txt"; commit_app "notes are kept"; mark_done
        else print "RUNNER: question Should notes be kept? Recommended: yes."; fi;;
   *)   print "RUNNER: blocked the self-test stops this task";;
 esac
@@ -293,8 +308,12 @@ note ""; note "==== (d) a function nothing calls, in a file task 1.2 names"
 print -r -- 'def save_list(items):
     return len(items)' > "$APP/src/store.py"
 try_commit "$APP"
-if refused "caller: src/store.py adds save_list()"; then pass d "the commit check refused a new function that nothing outside the tests calls"
-else fail d "the commit check did not refuse a function with no caller (git commit exit $RC)"; fi
+D_BAD=""; refused "caller: src/store.py adds save_list()" || D_BAD+=" plain"
+print -r -- 'async def save_later(items):
+    return len(items)' > "$APP/src/store.py"
+try_commit "$APP"; refused "caller: src/store.py adds save_later()" || D_BAD+=" async"
+if [ -z "$D_BAD" ]; then pass d "the commit check refused a new function, and a new async function, that nothing outside the tests calls"
+else fail d "the commit check did not refuse a function with no caller:$D_BAD"; fi
 
 # ---- (e) the four limits on TASKS.md
 note ""; note "==== (e) TASKS.md: two new tasks, a sub-task of a sub-task, growth, a start condition"
@@ -378,19 +397,29 @@ git -C "$APP" rm -q src/BROKEN && git -C "$APP" commit -q -m "the check passes a
 
 # ---- (l) a stopped task is parked, and only the owner's answer releases it
 note ""; note "==== (l) task 3.1: a question, a stop session, parking, release"
-print -r -- "3.1" > "$T/order-l"
+print -rl -- 3.1 3.3 > "$T/order-l"
 qpass() { ( cd "$WS" && QUEUE_ONCE=1 QUEUE_ORDER="$T/order-l" "$BIN/run_queue.sh" ) >> "$OUT" 2>&1; }
 L_BAD=""
 qpass
 [ -f "$WS/runs/waiting/3.1" ] && grep -q "task 3.1 parked: SUPERVISOR: waiting 3.1" "$QLOG" || L_BAD+=" not-parked"
 L_RUNS="$(grep -c "task 3.1: running" "$QLOG")"
-print -r -- "- A note by a supervising session, not an answer (supervising session, $(date +%Y-%m-%d))" >> "$WS/DECISIONS.md"
+print -r -- "
+## $(date +%Y-%m-%d)
+
+- A note by a supervising session, not an answer (supervising session, $(date +%Y-%m-%d))" >> "$WS/DECISIONS.md"
 qpass
 [ "$(grep -c "task 3.1: running" "$QLOG")" = "$L_RUNS" ] && [ -f "$WS/runs/waiting/3.1" ] || L_BAD+=" released-by-a-supervising-entry"
+grep -q "task 3.3 parked: needs 3.1, which waits" "$QLOG" && ! grep -q "task 3.3: running" "$QLOG" || L_BAD+=" dependent-not-parked-with-it"
 print -r -- "- Notes are kept. (owner, $(date +%Y-%m-%d))" >> "$WS/DECISIONS.md"
 qpass
 grep -q "task 3.1: DECISIONS.md changed since it was parked" "$QLOG" && grep -m1 '^### 3\.1 ' "$WS/TASKS.md" | grep -q '\[x\]' || L_BAD+=" not-released-by-the-owner"
-if [ -z "$L_BAD" ]; then pass l "a task that asked a question went to a stop session and was parked; a supervising entry did not release it and the owner's answer did"
+qpass
+grep -m1 '^### 3\.3 ' "$WS/TASKS.md" | grep -q '\[x\]' || L_BAD+=" dependent-not-released"
+# 3.2 asks, and the owner answers while its stop session is still running
+print -r -- 3.2 > "$T/order-l"
+qpass; qpass
+grep -q "task 3.2: DECISIONS.md changed since it was parked" "$QLOG" && grep -m1 '^### 3\.2 ' "$WS/TASKS.md" | grep -q '\[x\]' || L_BAD+=" answer-during-the-stop-session-lost"
+if [ -z "$L_BAD" ]; then pass l "a task that asked a question was parked, and a task that needs it was parked with it; a supervising entry under a new date did not release them; the owner's answer did, even when written while the stop session ran"
 else fail l "parking and release went wrong:$L_BAD"; fi
 
 # ---- (m) three different tasks stopping in a row pause the queue
@@ -407,8 +436,17 @@ wait_for "task 4.4: run_task.sh exit 0" 60 || M_BAD+=" not-resumed"
 touch "$WS/runs/queue.stop"
 n=0; while kill -0 $QPID 2>/dev/null && [ $n -lt 150 ]; do sleep 0.2; n=$((n+1)); done
 kill -0 $QPID 2>/dev/null && { kill $QPID; M_BAD+=" did-not-stop"; }
-if [ -z "$M_BAD" ]; then pass m "three different tasks stopping one after another paused the queue and told the owner; it ran the next task only when told to go on"
-else fail m "the pause after three stops went wrong:$M_BAD"; fi
+SUP_BEFORE="$(ls "$WS"/runs/supervise-*.jsonl 2>/dev/null | wc -l | tr -d ' ')"
+print -r -- 5.1 > "$T/order-m"; rm -f "$WS/runs/queue.stop"
+( cd "$WS" && QUEUE_POLL=1 QUEUE_ORDER="$T/order-m" "$BIN/run_queue.sh" ) >> "$OUT" 2>&1 &
+QPID=$!
+wait_for "queue paused: task 5.1 could not be started: STOP: runner.conf has no model id for the letter U" 60 || M_BAD+=" no-pause-on-a-settings-fault"
+[ "$(ls "$WS"/runs/supervise-*.jsonl 2>/dev/null | wc -l | tr -d ' ')" = "$SUP_BEFORE" ] || M_BAD+=" stop-session-for-a-settings-fault"
+touch "$WS/runs/queue.stop"
+n=0; while kill -0 $QPID 2>/dev/null && [ $n -lt 150 ]; do sleep 0.2; n=$((n+1)); done
+kill -0 $QPID 2>/dev/null && { kill $QPID; M_BAD+=" did-not-stop"; }
+if [ -z "$M_BAD" ]; then pass m "three different tasks stopping one after another paused the queue and told the owner, and it went on only when told to; a task that a wrong setting stopped from starting paused it too, with no stop session"
+else fail m "the pause went wrong:$M_BAD"; fi
 
 # ---- (n) the configured notifier delivered a message
 note ""; note "==== (n) notifier $NOTIFY_NAME"

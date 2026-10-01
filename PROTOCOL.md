@@ -70,15 +70,15 @@ The heading's `M:` column names who builds and at what effort; `R:` names the re
 
 | Letter | Builder | Use for |
 |---|---|---|
-| `S` | The faster, cheaper model | A contained change in named files with a clear recipe: a link format, a registry entry, a rename. Also inventory and search. |
-| `O` | The strongest model | Anything needing judgement: logic across several files, a rule that decides what the user sees, a measurement, a design. |
+| `S` | The faster, cheaper model | Most tasks: any task whose Build line names the functions, the cases and the check. Also inventory and search. |
+| `O` | The strongest model | Complex work: logic across several files, a rule that decides what the user sees, a measurement, a design. And every review. |
 | `C` | A second agent | Work the owner orders for that agent. Try it on real tasks before a queue relies on it; `<kit>/manifest.yaml` gives each adapter's status. |
 
-Effort is `medium` by default and `high` when the task spans several files, touches a live write, or its check is subtle. The reviewer is `O high` unless the owner says otherwise. A task with no `M:` column is the owner's own and the runner parks it. A task with `R: owner` stops at `[~]` when built, and only the owner marks it `[x]`.
+Builders run at `medium` effort. The reviewer is `O high` unless the owner says otherwise: the one reviewer is what catches a weaker first draft, so that is where the strongest model at its highest effort is spent. A task with no `M:` column is the owner's own and the runner parks it. A task with `R: owner` stops at `[~]` when built, and only the owner marks it `[x]`.
 
 Pin the exact model id in `runner.conf`. An alias can resolve to an older model for days without anyone noticing.
 
-The letter and the effort are the largest cost choices anyone makes for a task. In the project this kit came from, a task built on the strongest model at high effort cost about twice one built on it at medium effort and about four times one built on the cheaper model, and all three finished as often. The tasks were not alike, so this is a record and not a comparison; `runs/usage.log` gives the same figures for your own project, one line per session. A task whose Build line names the functions, the cases and the check is one the cheaper model can build.
+The letter and the effort are the largest cost choices anyone makes for a task. In the project this kit came from, a task built on the strongest model at high effort cost about twice one built on it at medium effort and about four times one built on the cheaper model, and all three finished as often. Counted per line changed, the reviewer found about as many defects in the cheaper model's diffs as in the strongest model's. The tasks were not alike, so this is a record and not a comparison; `runs/usage.log` gives the same figures for your own project, one line per session. A task whose Build line names the functions, the cases and the check is one the cheaper model can build.
 
 ## 6. How the queue runs
 
@@ -142,7 +142,7 @@ A git pre-commit hook in every repository the project touches runs `runner_check
 
 - adds more than one task, or an id with a second suffix;
 - grows `TASKS.md` by more than 20 lines;
-- writes a start condition ("not until", "does not start before") that the owner did not sign;
+- writes a start condition ("does not start before", "may not run until") that the owner did not sign;
 - adds a function to product code that nothing outside the tests calls, unless a queued task names this one as its input;
 - adds a file the task's text does not name;
 - switches on a live write while an open task says the user would see something false.

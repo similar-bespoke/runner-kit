@@ -107,7 +107,7 @@ selftest:
     - "PASS (a) a dry queue pass picks the first task"
     - "PASS (b) the default builder ran a task to a commit whose subject starts with the task id, and the heading is marked [x]"
     - "PASS (c) the commit check refused a staged new file that the task does not name"
-    - "PASS (d) the commit check refused a new function that nothing outside the tests calls"
+    - "PASS (d) the commit check refused a new function, and a new async function, that nothing outside the tests calls"
     - "PASS (e) the commit check refused a second new task, a sub-task of a sub-task, more than 20 added lines and an unsigned start condition"
     - "PASS (f) a task whose prerequisite is not done is stopped before a session starts"
     - "PASS (g) the commit check refused a live switch while an open task says the user would see something false"
@@ -115,8 +115,8 @@ selftest:
     - "PASS (i) run_task.sh counted a task done on its commit and its [x], with no agent"
     - "PASS (j) a commit that broke the project's check was sent back to its session, and the task ended done only once the check passed"
     - "PASS (k) a check that already failed was reported to the owner, and the task ran and was marked as not judged against it"
-    - "PASS (l) a task that asked a question went to a stop session and was parked; a supervising entry did not release it and the owner's answer did"
-    - "PASS (m) three different tasks stopping one after another paused the queue and told the owner; it ran the next task only when told to go on"
+    - "PASS (l) a task that asked a question was parked, and a task that needs it was parked with it; a supervising entry under a new date did not release them; the owner's answer did, even when written while the stop session ran"
+    - "PASS (m) three different tasks stopping one after another paused the queue and told the owner, and it went on only when told to; a task that a wrong setting stopped from starting paused it too, with no stop session"
     - "PASS (n) the configured notifier delivered a message"
     - "SELFTEST: PASS"
   with_no_agent:
@@ -170,7 +170,7 @@ status:
   proven:
     - "zsh -n on every zsh script and python3 -m py_compile on both Python files pass."
     - "The self-test passes with the claude adapter (all fourteen lines, with a mid-tier model at medium effort, CLAUDE_TOOLS='Bash Read Edit Write Task' and CLAUDE_MCP=no: the session had those five tools and no MCP server, started its one reviewer, ran the project's check and committed), and prints PARTIAL with --no-agent."
-    - "Each line of the self-test fails when the behaviour it proves is switched off: the caller check, the new-file check, the start-condition check, the project's check on a commit, the notice for a check that already fails, the release of a parked task, and the pause after three stops were each disabled in a copy of the kit, and each time only that line failed."
+    - "Each line of the self-test fails when the behaviour it proves is switched off: the caller check, the new-file check, the start-condition check, the project's check on a commit, the notice for a check that already fails, the release of a parked task, the pause after three stops, the pause on a wrong setting, the parking of a dependent task and the keeping of an answer written during a stop session were each disabled in a copy of the kit, and each time only that line failed."
     - "runner-init writes the files and hooks and keeps every file that exists."
     - "By the self-test, with real commits against the hook: the commit check refuses an unnamed new file, a function nothing calls, a second task heading in one commit, an id with a second suffix, more than 20 added lines in TASKS.md, an unsigned start condition and a live switch while an open task says the user would see something false; it accepts a commit that keeps every rule. The prerequisite check stops a task whose Needs task is not done."
     - "By hand: the commit check accepts a second task or a start condition with a decision signed (owner, <date>). Task ids above 9 before the dot are read."

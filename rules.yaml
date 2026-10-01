@@ -30,8 +30,8 @@ rules:
   - id: R06
     rule: "A question for the owner is asked once and waits; engineering is not the owner's to answer."
     check_point: "In the queue, on every pass."
-    code_enforced: full
-    check: "bin/run_queue.sh: a parked task (runs/waiting/<id>) runs again only when the owner appends to DECISIONS.md; entries signed by a supervising session do not release it; a third stop parks the task."
+    code_enforced: part
+    check: "bin/run_queue.sh: a parked task (runs/waiting/<id>) runs again only when an entry is added to DECISIONS.md that no supervising session signed; a task that needs a parked task is parked with it; a third stop parks the task. One answer releases every parked task, so a task whose own question is still open runs once more and asks again."
   - id: R07
     rule: "A supervising session writes no product code."
     check_point: "In the supervising session and the stop session (SUPERVISOR-PROMPT.md)."

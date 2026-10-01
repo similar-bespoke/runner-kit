@@ -71,6 +71,7 @@ REGISTRY_FILE = CONF.get("REGISTRY_FILE", "")
 LIVE_FLAGS = CONF.get("LIVE_FLAG_PATTERN", "")
 LIVE_FLAG_FILE = CONF.get("LIVE_FLAG_FILE", "")
 MAX_GROWTH = 20
+DEF = re.compile(r"\s*(?:async\s+)?def\s+(\w+)\s*\(")
 HEADING = re.compile(r"^#{3,4} (\d+\.\d+[a-z0-9]*)\b")
 TASK_ID = re.compile(r"\b(\d+\.\d+[a-z]?\d*[a-z]?)(?![\w.])")
 SECOND_SUFFIX = re.compile(r"^\d+\.\d+[a-z]+\d")
@@ -212,9 +213,9 @@ def check_diff(task_id, repo, diff, added_files, before_tasks):
 
     for rel, (added, removed) in files.items():
         if rel.endswith(".py") and rel.startswith(PRODUCT_DIRS) and code:
-            before = {m.group(1) for m in (re.match(r"\s*def (\w+)\(", l) for l in removed) if m}
+            before = {m.group(1) for m in (DEF.match(l) for l in removed) if m}
             for n, line in enumerate(added):
-                m = re.match(r"\s*def (\w+)\(", line)
+                m = DEF.match(line)
                 if not m or m.group(1) in before:
                     continue
                 name = m.group(1)

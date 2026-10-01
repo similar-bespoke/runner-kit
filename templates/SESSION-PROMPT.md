@@ -70,12 +70,13 @@ Report what the owner can open or use, and distinguish built code from a verifie
   `--no-verify`: the runner checks the commit again afterwards and stops
   the task.
 - Mark the task done in `<WORKSPACE>/TASKS.md`: `[x]` and the commit on the
-  heading, and at most three lines under it. If `TASKS.md` is in a different
+  heading, and at most three lines under it. If the heading says `R: owner`,
+  mark it `[~]`, never `[x]`: that mark is the owner's. If `TASKS.md` is in a different
   repository from the code, commit that mark there as a second commit whose
   subject also starts `<ID>:`. Check output and review findings belong in
   the commit message, not in `TASKS.md`; the hook refuses more than 20 added
-  lines there. If the owner decided anything during the session, append it
-  to `DECISIONS.md` with the date, signed `(owner, <date>)`.
+  lines there. Never write an entry signed `(owner, <date>)`: nobody is
+  present to decide. A choice that is the owner's is a question (below).
 - Push and deploy are not yours. If the task ends in a deploy, end your
   message with the exact commands, one per bash block, and say what the
   owner can open or use once it is live.

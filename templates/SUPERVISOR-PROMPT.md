@@ -78,7 +78,9 @@ What you may do.
   `--no-verify`.
 - If the stop line starts "RUNNER CHECK" or "runner checks failed", the
   commit broke a rule in `DELIVERY-RULES.yaml`: decide the smallest fix (trim
-  `TASKS.md`, wire a function in, name a file) as a retry or one task.
+  `TASKS.md`, wire a function in, name a file). If the task is already
+  marked `[x]` a retry does nothing: add the one task that makes the fix
+  and answer `run <new id> then <ID>`.
 - If the stop line says the project check passed before the task and fails
   on its commit, the commit is in and the task is marked done, so a retry
   would do nothing. Add the one task that makes the check pass again, citing
