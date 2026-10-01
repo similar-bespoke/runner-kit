@@ -1,8 +1,6 @@
 # runner-kit
 
-A protocol for setting up a powerful coding agent runner infrastructure that reduces token usage and ensures output quality across multi-sessions. It runs off one coordinating task and can be used with any coding agent.
-
-A small kit that lets a coding agent work through a written list of tasks, unattended, one fresh session per task, with the rules that matter enforced by code at commit time.
+A protocol for setting up a powerful coding agent runner infrastructure that reduces token usage and ensures output quality across multi-sessions. It runs off one coordinating task and can be used with any coding agent to work through a written list of tasks, unattended, one fresh session per task, with the rules that matter enforced by code at commit time.
 
 ## What it is
 
