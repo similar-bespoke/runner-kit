@@ -25,9 +25,16 @@
 # (runs/<id>.rounds, cleared when it is done); its third stop parks it for the
 # owner.
 #
+# When STOP_STREAK different tasks stop one after another (3 unless runner.conf
+# says otherwise; 0 switches this off), a cause they share is likelier than
+# that many separate faults, so the queue pauses and tells the owner once. It
+# starts again when TASKS.md, RUN-ORDER.md, DECISIONS.md, either prompt or
+# runner.conf changes, or on `touch runs/queue.go`.
+#
 # Test switches (no model call, no notice): QUEUE_DRY=1 logs what would run,
 # QUEUE_ONCE=1 does one pass and exits, QUEUE_ORDER and QUEUE_RUNS point at
-# another queue file and runs directory. Sourcing this file defines the
+# another queue file and runs directory, QUEUE_POLL is the seconds between
+# looks while idle or paused (15). Sourcing this file defines the
 # functions without running the loop.
 set -u
 BIN="${0:A:h}"; KIT="${BIN:h}"
@@ -39,7 +46,8 @@ TASKS="$DIR/TASKS.md"; DECISIONS="$DIR/DECISIONS.md"
 ORDER="${QUEUE_ORDER:-$DIR/RUN-ORDER.md}"
 RUNS="${QUEUE_RUNS:-$DIR/runs}"; WAITING="$RUNS/waiting"
 QLOG="$RUNS/queue.log"; STOPFILE="$RUNS/queue.stop"; LOCK="$RUNS/queue.lock"
-DRY="${QUEUE_DRY:-0}"; ONCE="${QUEUE_ONCE:-0}"
+DRY="${QUEUE_DRY:-0}"; ONCE="${QUEUE_ONCE:-0}"; POLL="${QUEUE_POLL:-15}"
+GOFILE="$RUNS/queue.go"
 mkdir -p "$RUNS" "$WAITING"
 
 log() {
@@ -152,6 +160,7 @@ handle_stop() {
   if heading "$id" | grep -q '\[~\]' && heading "$id" | grep -q 'R: owner'; then
     park "$id" "built, waits for the owner's yes at [~]"; return 0   # run_task.sh has already told the owner
   fi
+  LAST_STOP="$id"
   rounds="$(cat "$RUNS/$id.rounds" 2>/dev/null || echo 0)"
   if [ "$rounds" -ge 2 ]; then
     park "$id" "third stop after two supervising rounds: $stop"
@@ -188,10 +197,11 @@ handle_stop() {
 # One pass over the queue. Returns 0 if a task ran, 1 if nothing was runnable.
 typeset -A SEEN
 WAITING_IDS=()
+LAST_STOP=""     # the task one_pass ran, if it stopped; empty if it finished or nothing ran
 one_pass() {
   local line id head hash why
   local -a words
-  WAITING_IDS=()
+  WAITING_IDS=(); LAST_STOP=""
   [ -f "$ORDER" ] || { log "no queue file at $ORDER"; return 1; }
   local -a queue=()
   while IFS= read -r line || [ -n "$line" ]; do
@@ -239,6 +249,21 @@ one_pass() {
   return 1
 }
 
+# The files a person or a supervising session changes to put a shared fault right.
+workspace_hash() {
+  cat "$TASKS" "$ORDER" "$DECISIONS" "$DIR/SESSION-PROMPT.md" "$DIR/SUPERVISOR-PROMPT.md" "$RUNNER_CONF" 2>/dev/null | sha | cut -d' ' -f1
+}
+
+# Different tasks have stopped one after another: tell the owner once and wait
+# for a change to the workspace, the go file or the stop file.
+pause_for_streak() {
+  local before="$(workspace_hash)"
+  notify "$PROJECT queue paused: $# different tasks stopped one after another ($*). A cause they share is likelier than $# separate faults: look at SESSION-PROMPT.md, the model, the project's check and this machine. The queue starts again when TASKS.md, RUN-ORDER.md, DECISIONS.md, a prompt or runner.conf changes, or on: touch $GOFILE"
+  while [ ! -f "$STOPFILE" ] && [ ! -f "$GOFILE" ] && [ "$(workspace_hash)" = "$before" ]; do sleep "$POLL"; done
+  rm -f "$GOFILE"
+  [ -f "$STOPFILE" ] || log "queue resumed after its pause"
+}
+
 main() {
   if ! mkdir "$LOCK" 2>/dev/null; then
     local pid="$(cat "$LOCK/pid" 2>/dev/null)"
@@ -252,17 +277,23 @@ main() {
   trap 'rm -rf "$LOCK"; exit 130' INT TERM HUP
   [ -f "$STOPFILE" ] && { rm -f "$STOPFILE"; log "removed an old stop file"; }
   log "queue started (pid $$), queue file $ORDER"
-  local idle_sent=0 n
+  local idle_sent=0 n limit="${STOP_STREAK:-3}"
+  local -aU streak=()
+  rm -f "$GOFILE"
   while [ ! -f "$STOPFILE" ]; do
     if one_pass; then
       idle_sent=0
+      if [ -n "$LAST_STOP" ]; then streak+=("$LAST_STOP"); elif [ "$DRY" != 1 ]; then streak=(); fi
+      if [ "$limit" -gt 0 ] && [ ${#streak} -ge "$limit" ] && [ "$ONCE" != 1 ]; then
+        pause_for_streak "${streak[@]}"; streak=()
+      fi
     else
       if [ $idle_sent = 0 ]; then
         notify "$PROJECT queue idle. Waiting: ${WAITING_IDS[*]:-none}."
         idle_sent=1
       fi
       [ "$ONCE" = 1 ] && break
-      n=0; while [ $n -lt 20 ] && [ ! -f "$STOPFILE" ]; do sleep 15; n=$((n+1)); done
+      n=0; while [ $n -lt 20 ] && [ ! -f "$STOPFILE" ]; do sleep "$POLL"; n=$((n+1)); done
       continue
     fi
     [ "$ONCE" = 1 ] && break

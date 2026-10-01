@@ -31,6 +31,16 @@ questions:
       - "runner.conf: ADAPTER_<letter>, MODEL_<letter> for each letter"
       - "runner.conf: DEFAULT_BUILDER, DEFAULT_EFFORT, DEFAULT_REVIEWER, SUPERVISOR"
       - "runner.conf: CLAUDE_ALLOWED_TOOLS, if the owner narrows it"
+  - id: project_check
+    text: "What one command says whether the project is sound, for example its test suite?"
+    type: "one shell command that exits 0 when the project is sound, or none"
+    default: "none"
+    recommended: "The project's test command, if it has one and it gives the same answer twice. The runner runs it itself before each task and on each task's commit, and sends a session back to repair a commit that breaks it. Leave it empty rather than name a check that fails at random."
+    detect:
+      - "A test command in the README, a Makefile target, a package.json script, a pytest or tox configuration, or a CI workflow file names the command; say what was found and ask."
+      - "Run the candidate once from the first repository. If it fails now, tell the owner: the runner will report it once and will not judge commits against it until it passes."
+    fills:
+      - "runner.conf: CHECK_CMD"
   - id: notify
     text: "How should the runner tell you that a task is done, stopped or waiting for you?"
     type: "one of: none, desktop, command (with the command)"

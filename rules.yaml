@@ -57,3 +57,13 @@ rules:
     check_point: "At commit, in the repository that holds the workspace."
     code_enforced: part
     check: "bin/runner_checks.py, check 'gate': a start condition written into TASKS.md or RUN-ORDER.md is refused unless it cites a decision signed (owner, <date>)."
+  - id: R12
+    rule: "The runner, not the session, says whether the project's check passes."
+    check_point: "Before a task's first session and on its commit."
+    code_enforced: part
+    check: "bin/run_task.sh runs CHECK_CMD itself. A commit that turns a passing check into a failing one sends the session back to repair it; a check that already fails is reported to the owner once and the task's commit is not judged. With CHECK_CMD empty nothing is enforced. Observed: over more than three days, thirteen task commits each recorded that tests were already failing before their change, and nothing told the owner."
+  - id: R13
+    rule: "Three different tasks stopping in a row is a fault in the system, not in the tasks: pause and put the system right."
+    check_point: "In the queue, after every task."
+    code_enforced: full
+    check: "bin/run_queue.sh: after STOP_STREAK different tasks stop one after another the queue tells the owner and waits for a change to the workspace or for runs/queue.go. Observed: one fault in the queue re-ran the same parked tasks 158 times in a morning."

@@ -4,7 +4,7 @@
 # the answers to interview.yaml.
 kit:
   name: runner-kit
-  version: 0.1.0
+  version: 0.2.0
   licence: GPL-3.0
   summary: "A task runner for coding agents: a written queue of small tasks, one fresh unattended session per task, rules enforced by code at commit time."
 
@@ -48,6 +48,7 @@ files:
   - {path: bin/runner-notify, purpose: "Sends one message through the notifier named by NOTIFY.", installs_to: "stays in the kit"}
   - {path: adapters/claude.sh, purpose: "Adapter for Claude Code.", installs_to: "stays in the kit; sourced by run_task.sh and run_queue.sh"}
   - {path: adapters/codex.sh, purpose: "Adapter for Codex.", installs_to: "stays in the kit; sourced by run_task.sh and run_queue.sh"}
+  - {path: adapters/stub.sh, purpose: "An adapter with no agent: a session is one run of the script named by STUB_SCRIPT. For the self-test and for trying the runner's logic without spending anything. Not a builder.", installs_to: "stays in the kit; sourced by run_task.sh and run_queue.sh"}
   - {path: adapters/TEMPLATE.sh, purpose: "The adapter contract, for adding another agent.", installs_to: "stays in the kit"}
   - {path: notify/none.sh, purpose: "Notifier: the log only.", installs_to: "stays in the kit"}
   - {path: notify/desktop.sh, purpose: "Notifier: a desktop notice (osascript on macOS, notify-send on Linux), with the log as fallback.", installs_to: "stays in the kit"}
@@ -78,7 +79,7 @@ install:
     what: "Copy the templates, write runner.conf and install the hooks. Add --deploy only if the answer to question 'deploy' is yes. If it prints a line to add to an existing hook or .gitignore, show the owner that line and add it only on the owner's yes."
     command: "<kit>/bin/runner-init [--deploy] <workspace> <repo> [<repo> ...]"
   - step: 4
-    what: "Fill <workspace>/runner.conf from the interview answers, by editing the KEY=value lines in place (rules at the top of the file; keys in schema/runner.conf.schema.json). At least: PROJECT, PRODUCT_DIRS, FREE_DIRS, NOTIFY, an ADAPTER and a MODEL for each letter in use, DEFAULT_BUILDER, DEFAULT_REVIEWER, SUPERVISOR, DEPLOYS and LIVE_CHECK_CMD."
+    what: "Fill <workspace>/runner.conf from the interview answers, by editing the KEY=value lines in place (rules at the top of the file; keys in schema/runner.conf.schema.json). At least: PROJECT, PRODUCT_DIRS, FREE_DIRS, CHECK_CMD, NOTIFY, an ADAPTER and a MODEL for each letter in use, DEFAULT_BUILDER, DEFAULT_REVIEWER, SUPERVISOR, DEPLOYS and LIVE_CHECK_CMD."
     command: null
   - step: 5
     what: "Put the owner's outcomes in <workspace>/DELIVERY-RULES.yaml: replace 'goal_outcomes: []' with a list of '- id: G1' / 'outcome: \"...\"' entries, and set meta.written to today's date."
@@ -101,21 +102,25 @@ selftest:
   other_forms:
     - "<kit>/selftest/run.sh --adapter <adapter> --model <model id> [--effort medium] [--notify none|desktop|command]"
     - "<kit>/selftest/run.sh --no-agent"
-  what_it_does: "Builds a toy code repository and a toy workspace in a temporary directory, initialises them with the kit and proves four facts. Line (b) starts one real agent session with the default builder. Nothing outside the temporary directory is changed. Details are in selftest.log there; the path is printed on standard error."
+  what_it_does: "Builds a toy code repository and a toy workspace in a temporary directory, initialises them with the kit and proves fourteen facts. Line (b) starts one real agent session with the default builder; every other line spends nothing. Lines (c) to (h) make real commits against the hook. Lines (i) to (m) run run_task.sh and run_queue.sh with a stand-in session (adapters/stub.sh). Nothing outside the temporary directory is changed. Details are in selftest.log there; the path is printed on standard error."
   expected_output:
     - "PASS (a) a dry queue pass picks the first task"
     - "PASS (b) the default builder ran a task to a commit whose subject starts with the task id, and the heading is marked [x]"
     - "PASS (c) the commit check refused a staged new file that the task does not name"
-    - "PASS (d) the configured notifier delivered a message"
+    - "PASS (d) the commit check refused a new function that nothing outside the tests calls"
+    - "PASS (e) the commit check refused a second new task, a sub-task of a sub-task, more than 20 added lines and an unsigned start condition"
+    - "PASS (f) a task whose prerequisite is not done is stopped before a session starts"
+    - "PASS (g) the commit check refused a live switch while an open task says the user would see something false"
+    - "PASS (h) the commit check accepted a commit that keeps every rule"
+    - "PASS (i) run_task.sh counted a task done on its commit and its [x], with no agent"
+    - "PASS (j) a commit that broke the project's check was sent back to its session, and the task ended done only once the check passed"
+    - "PASS (k) a check that already failed was reported to the owner, and the task ran and was marked as not judged against it"
+    - "PASS (l) a task that asked a question went to a stop session and was parked; a supervising entry did not release it and the owner's answer did"
+    - "PASS (m) three different tasks stopping one after another paused the queue and told the owner; it ran the next task only when told to go on"
+    - "PASS (n) the configured notifier delivered a message"
     - "SELFTEST: PASS"
   with_no_agent:
-    note: "Line (b) is replaced by a SKIP line and the last line is PARTIAL. PARTIAL is not a pass."
-    expected_output:
-      - "PASS (a) a dry queue pass picks the first task"
-      - "SKIP (b) no agent session was started (--no-agent); a real task run is not proven"
-      - "PASS (c) the commit check refused a staged new file that the task does not name"
-      - "PASS (d) the configured notifier delivered a message"
-      - "SELFTEST: PARTIAL"
+    note: "Line (b) is replaced by 'SKIP (b) no agent session was started (--no-agent); a real task run is not proven' and the last line is SELFTEST: PARTIAL. Every other line is as above. PARTIAL is not a pass."
   exit_codes: {"0": "SELFTEST: PASS", "1": "SELFTEST: FAIL", "2": "SELFTEST: PARTIAL, or a usage error before any line is printed"}
   on_failure: "A failed fact prints a line starting FAIL with the reason, and the last line is SELFTEST: FAIL. Do not report the install as working."
 
@@ -137,10 +142,9 @@ adapters:
       - "One real task through run_queue.sh (one pass, not dry) in a project whose workspace is a directory inside its one code repository, with a task id above 9 before the dot and the desktop notifier: done in one attempt, exit 0."
       - "With the machine's own agent settings left out, a session started with the adapter's flags ran a shell command only when CLAUDE_ALLOWED_TOOLS named Bash, and was denied without it."
     not_run:
-      - "Resuming a session (adapter_resume)."
-      - "A stop session started by run_queue.sh, and its verdicts."
+      - "Resuming a session (adapter_resume) and a stop session started by run_queue.sh, with this adapter. The runner's side of both is proven with the stand-in session."
       - "A failed sign-in, a network or overload error and a usage limit: the handling is carried over from the toolkit this kit was made from and was not triggered here."
-      - "CLAUDE_MIN_VERSION, and a narrowed CLAUDE_ALLOWED_TOOLS."
+      - "CLAUDE_MIN_VERSION, a narrowed CLAUDE_ALLOWED_TOOLS, and a long task under the five-tool list: sessions in the project this kit came from called only those five tools in 147 sessions, but none of those sessions ran with the list in force."
       - "An API key in place of the command-line tool's own sign-in. The adapter unsets the API key variables for its sessions."
   codex:
     file: adapters/codex.sh
@@ -165,9 +169,12 @@ adapters:
 status:
   proven:
     - "zsh -n on every zsh script and python3 -m py_compile on both Python files pass."
-    - "The self-test passes with the claude adapter, and prints PARTIAL with --no-agent."
+    - "The self-test passes with the claude adapter (all fourteen lines, with a mid-tier model at medium effort, CLAUDE_TOOLS='Bash Read Edit Write Task' and CLAUDE_MCP=no: the session had those five tools and no MCP server, started its one reviewer, ran the project's check and committed), and prints PARTIAL with --no-agent."
+    - "Each line of the self-test fails when the behaviour it proves is switched off: the caller check, the new-file check, the start-condition check, the project's check on a commit, the notice for a check that already fails, the release of a parked task, and the pause after three stops were each disabled in a copy of the kit, and each time only that line failed."
     - "runner-init writes the files and hooks and keeps every file that exists."
-    - "The commit check refuses an unnamed new file, a second task heading in one commit, an id with a second suffix and an unsigned start condition, and accepts the same change with a decision signed (owner, <date>). The prerequisite check stops a task whose Needs task is not done. Task ids above 9 before the dot are read."
+    - "By the self-test, with real commits against the hook: the commit check refuses an unnamed new file, a function nothing calls, a second task heading in one commit, an id with a second suffix, more than 20 added lines in TASKS.md, an unsigned start condition and a live switch while an open task says the user would see something false; it accepts a commit that keeps every rule. The prerequisite check stops a task whose Needs task is not done."
+    - "By hand: the commit check accepts a second task or a start condition with a decision signed (owner, <date>). Task ids above 9 before the dot are read."
+    - "By the self-test, with the stand-in session (adapters/stub.sh): run_task.sh counts a task done on its commit and its [x]; a commit that turns the project's check from passing to failing sends the session back, by a resume, and the task is done only when the check passes; a check that already fails is reported once and the task's done message says it was not judged; a task that asks a question goes to a stop session and is parked; an entry signed by a supervising session does not release it and the owner's does; three different tasks stopping in a row pause the queue until runs/queue.go; the stop file stops the queue."
     - "Notifiers: none; command, with a command that succeeded and one that failed; desktop through osascript on macOS, and its log fallback when no notice tool is found."
     - "The deploy.sh skeleton, with stand-in commands on one machine: unfilled it prints NOT LIVE; filled it prints LIVE and writes runs/live-sha; when the process was not restarted it prints NOT LIVE and leaves runs/live-sha unchanged."
   experimental:
@@ -175,10 +182,13 @@ status:
   untested:
     - "Linux, and any macOS shell setup where zsh is not on the PATH."
     - "notify-send on Linux."
-    - "The queue beyond one pass with one task: a stop session, parking, release by a decision, the stop file and the lock."
-    - "Resuming any session, and every failure path of run_task.sh."
+    - "With a real agent: a stop session and its verdicts, and resuming a session. Both are proven only with the stand-in session."
+    - "The stop-session verdicts retry and run ... then, the third stop of one task, and the lock against a second queue."
+    - "The failure paths of run_task.sh that depend on the agent: a failed sign-in, a network or overload error, a usage limit."
+    - "The release of a paused queue by a change to the workspace (the self-test releases it with runs/queue.go)."
+    - "CHECK_CMD with a real project's test suite inside the kit as it stands. What it guards against was observed, and the logic is proven by the self-test with a one-line check."
     - "More than one code repository."
-    - "The pre-flight command, the registry file and the live-switch check."
+    - "The pre-flight command and the registry file."
     - "deploy.sh against a real host."
     - "A repository with core.hooksPath set: runner-init prints a warning and the line to add, and installs nothing there."
     - "INSTALL-PROMPT.md followed end to end by a fresh agent on another machine."

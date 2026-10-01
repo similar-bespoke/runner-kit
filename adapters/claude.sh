@@ -7,6 +7,15 @@
 #                         choice to the machine's own Claude Code settings.
 #   CLAUDE_MIN_VERSION    refuse to start on an older command-line version
 #                         (for example 2.1.280), for a model that needs it.
+#   CLAUDE_TOOLS          the built-in tools a session is given, as words (for
+#                         example 'Bash Read Edit Write Task'; Task is the tool
+#                         that starts the one reviewer). Every tool's
+#                         description is re-read on every turn, so a short list
+#                         is cheaper. Empty gives the session every tool.
+#   CLAUDE_MCP            no starts the session without the machine's MCP
+#                         servers and connectors (mail, documents and so on),
+#                         which an unattended coding session should not hold.
+#                         yes, or unset, leaves them as the machine has them.
 
 AGENT_NAME="Claude Code"
 AGENT_BIN=claude
@@ -36,6 +45,8 @@ _claude_run() {
   local -a flags=("$@"); local r
   for r in "${A_DIRS[@]}"; do [ "$r" = "$PWD" ] || flags+=(--add-dir "$r"); done
   [ -n "${CLAUDE_ALLOWED_TOOLS:-}" ] && flags+=(--allowedTools ${=CLAUDE_ALLOWED_TOOLS})
+  [ -n "${CLAUDE_TOOLS:-}" ] && flags+=(--tools ${=CLAUDE_TOOLS})
+  [ "${CLAUDE_MCP:-yes}" = no ] && flags+=(--strict-mcp-config)
   command claude -p "$A_PROMPT" "${flags[@]}" --model "$A_MODEL" --effort "$A_EFFORT" \
     --permission-mode acceptEdits \
     --output-format stream-json --verbose
@@ -53,7 +64,7 @@ adapter_resume() { _claude_run --resume "$A_SESSION"; }
 adapter_read_result() {
   eval "$(python3 - "$1" "${2:-RUNNER}" <<'PY'
 import sys, json, shlex, re
-kind, text, reason, session = "", "", "", ""
+kind, text, reason, session, usage = "", "", "", "", ""
 for line in open(sys.argv[1], errors="replace"):
     try: e = json.loads(line)
     except ValueError: continue
@@ -67,13 +78,17 @@ for line in open(sys.argv[1], errors="replace"):
             if "authenticat" in low or "oauth" in low or "api key" in low: kind = "auth"
             else: kind = "transient"
         else: kind = ""
+        u = e.get("usage") or {}
+        tokens = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"))
+        usage = "%s turns, %.1fM tokens" % (e.get("num_turns") or "?", tokens / 1e6)
+        if e.get("total_cost_usd") is not None: usage += ", $%.2f at list price" % e["total_cost_usd"]
 if sys.argv[2] == "SUPERVISOR":
     m = re.findall(r"^\s*(SUPERVISOR: *(?:retry|run|waiting|skip)\b.*)$", text, re.M)
 else:
     m = re.findall(r"RUNNER: *(?:done|blocked|question)(?: |$).*", text)
-print("RESULT_KIND=%s RESULT_REASON=%s RESULT_TEXT=%s RESULT_VERDICT=%s RESULT_SESSION=%s" % (
+print("RESULT_KIND=%s RESULT_REASON=%s RESULT_TEXT=%s RESULT_VERDICT=%s RESULT_SESSION=%s RESULT_USAGE=%s" % (
     shlex.quote(kind), shlex.quote(reason), shlex.quote(text[:600]),
-    shlex.quote(m[-1].strip() if m else ""), shlex.quote(session)))
+    shlex.quote(m[-1].strip() if m else ""), shlex.quote(session), shlex.quote(usage)))
 PY
 )"
 }

@@ -4,6 +4,9 @@
 # (upper case, copied into each workspace), and record the adapter's status in
 # manifest.yaml with exactly what was run.
 #
+# adapters/stub.sh is a complete, small example: it drives no agent, and the
+# self-test uses it to run the runner's own logic without spending anything.
+#
 # An adapter is a zsh file that is sourced, never run. It holds no logic about
 # tasks, queues or commits: only how to drive one agent's command-line tool.
 #
@@ -51,6 +54,8 @@
 #                       rate limit: worth a wait and a resume) or empty
 #       RESULT_REASON   the tool's own reason for a failure, or empty
 #       RESULT_SESSION  the session id, read from the stream
+#       RESULT_USAGE    optional: what the session used, in a few words (turns,
+#                       tokens, cost), for runs/usage.log and the done message
 #
 # One optional operation:
 #   adapter_preflight       a check that fails in seconds (for example a

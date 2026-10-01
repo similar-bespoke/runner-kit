@@ -8,7 +8,7 @@ One set of instructions for any coding agent working on any project. The person 
 
 Work is cut into small tasks written down in one file. A plain script, not a model, takes the next task, starts a fresh agent session on that task alone, and checks afterwards that a commit landed. Rules that matter are enforced by code at commit time, so a session cannot argue with them. The owner is asked only what only the owner can answer, once, in writing. Nothing counts as progress until the owner can open it.
 
-Each rule here exists because of an observed failure: sessions that drifted, findings that bred tasks, the same question asked many times, code with no caller, and deploys reported live that were not.
+Each rule here exists because of an observed failure: sessions that drifted, findings that bred tasks, the same question asked many times, code with no caller, deploys reported live that were not, and tests that stayed broken for days because each session only noted it and moved on.
 
 ## 2. Who does what
 
@@ -78,6 +78,8 @@ Effort is `medium` by default and `high` when the task spans several files, touc
 
 Pin the exact model id in `runner.conf`. An alias can resolve to an older model for days without anyone noticing.
 
+The letter and the effort are the largest cost choices anyone makes for a task. In the project this kit came from, a task built on the strongest model at high effort cost about twice one built on it at medium effort and about four times one built on the cheaper model, and all three finished as often. The tasks were not alike, so this is a record and not a comparison; `runs/usage.log` gives the same figures for your own project, one line per session. A task whose Build line names the functions, the cases and the check is one the cheaper model can build.
+
 ## 6. How the queue runs
 
 `run_queue.sh` runs unattended in a tmux session, one task at a time:
@@ -86,15 +88,17 @@ Pin the exact model id in `runner.conf`. An alias can resolve to an older model 
 2. It calls `run_task.sh <id>`. Exit 0 means done. Any other exit starts a stop session (section 8).
 3. A parked task has a file `runs/waiting/<id>` holding a hash of `DECISIONS.md` and the reason. It is tried again only when the owner appends an answer. Entries signed by a supervising session are left out of the hash, so one session's note cannot release every parked task.
 4. When nothing is runnable it tells the owner once that the queue is idle and which tasks wait for the owner, then checks again every five minutes.
-5. `touch runs/queue.stop` stops it after the current task. A lock stops a second copy starting.
+5. When three different tasks stop one after another (`STOP_STREAK` in `runner.conf`; 0 switches this off), the queue pauses and tells the owner once. That many stops in a row more likely share a cause (the session prompt, the model, the project's check, the machine) than have one each, and running on would spend a session and a stop session on every task left in the queue. It starts again when `TASKS.md`, `RUN-ORDER.md`, `DECISIONS.md`, a prompt or `runner.conf` changes, or on `touch runs/queue.go`.
+6. `touch runs/queue.stop` stops it after the current task. A lock stops a second copy starting.
 
 `run_task.sh` for one task:
 
 1. Checks before spending anything: that the agent's command is installed and signed in, that the repository exists, and that every `Needs` task is done.
 2. Starts a fresh session with `SESSION-PROMPT.md`, the task's model and effort, and edit permission. The session id is saved, so a later attempt resumes the same session with its context.
 3. Afterwards, done means two facts: a commit whose subject starts with the task id, and `[x]` on the heading. It then re-runs the commit checks on that commit, which catches a bypassed hook.
-4. If not done, it reads the session's own result and acts: a failed sign-in stops for the owner; a network or overload error waits and resumes with doubling delay; a usage limit sleeps until the stated reset; two attempts with no commit and no changed file stop the task; otherwise it resumes, up to four attempts.
-5. It tells the owner when a task is done, how many built changes are not live, and the deploy command.
+4. It runs the project's own check itself (`CHECK_CMD` in `runner.conf`, for example the test suite): once before the task's first session and again on the task's commit. It does not take the session's word that the check passes. If the check passed before and fails on the commit, the same session is sent back, with the output, to repair it; the task is done only when the check passes again. If the check already failed before the task, the owner is told once, the task runs, and its done message says the commit was not judged against the check. A result is kept with the commits it was run on, so the check after one task serves as the check before the next.
+5. If not done, it reads the session's own result and acts: a failed sign-in stops for the owner; a network or overload error waits and resumes with doubling delay; a usage limit sleeps until the stated reset; two attempts with no commit and no changed file stop the task; otherwise it resumes, up to four attempts.
+6. It tells the owner when a task is done, how many built changes are not live, and the deploy command.
 
 ## 7. What a task session does
 
@@ -128,6 +132,8 @@ SUPERVISOR: waiting <id> <one sentence for the owner with the recommended answer
 SUPERVISOR: skip <id> <why>
 ```
 
+When the stop line says the project's check passed before the task and fails on its commit, the commit is in and the task is marked done, so the stop session adds the one task that makes the check pass again and orders it first.
+
 A task gets two such rounds. Its third stop parks it for the owner. A question for the owner is written once; no session restates an open question or reruns a parked task.
 
 ## 9. Rules enforced by code
@@ -142,6 +148,10 @@ A git pre-commit hook in every repository the project touches runs `runner_check
 - switches on a live write while an open task says the user would see something false.
 
 A commit recording a decision signed `(owner, <date>)` is exempt from the first three. When a check is wrong, the fix is to correct the check with a recorded decision, not to bypass it.
+
+**The check is run by the runner.** The hook judges the shape of a commit. Whether the project still works is judged by the project's own check, and `run_task.sh` runs that itself, before the task and on its commit (section 6). A session's statement that the tests pass is not evidence.
+
+**Each check is proven.** `<kit>/selftest/run.sh` makes one bad commit per check and confirms the refusal, makes one good commit and confirms it is accepted, and drives the runner's own logic with a stand-in session that spends nothing (`<kit>/adapters/stub.sh`). A check with no case there is listed as untested in `<kit>/manifest.yaml`.
 
 **Live means checked.** Everything goes live through `deploy.sh <commit>` in the workspace. It stops before pushing if the host cannot be reached, deploys, restarts each service, and prints `LIVE` only when the running system reports that commit and every process started after the deploy began. Only then does it write `runs/live-sha`. `deploy.sh check` reports the state at any time. No one says "live" without that word on the screen.
 
@@ -163,6 +173,7 @@ A commit recording a decision signed `(owner, <date>)` is exempt from the first 
 
 - The runner sends the owner a short message when a task is done, stops, is parked or the queue goes idle. `NOTIFY` in `runner.conf` picks the route: `none` (the log only), `desktop` (a desktop notice) or `command` (the owner's own command, which receives the message as one argument). It is best effort and never blocks the runner. Every message is also a line in `runs/notify.log`.
 - `runs/queue.log` is the runner's log. Each session's full transcript is kept beside it.
+- `runs/usage.log` has one line per session: the task, the attempt, the letter and effort, the minutes, and what the adapter reports the session used (turns, tokens, cost at list price). Read it before deciding what letter and effort the next tasks get.
 - `<kit>/bin/runner-queue` shows the task in hand, tasks parked for the owner, and the tasks remaining, refreshed every ten seconds. `runner-queue once` prints it once; `runner-queue log` follows the log.
 
 ## 12. Rules that carry to every project
@@ -180,12 +191,14 @@ The same rules, with where each is checked and whether code enforces it, are in 
 9. Live is what the deploy check says, then what the first live result shows against its source.
 10. Progress is something the owner can open.
 11. No approval steps or pass marks the owner did not ask for. Delegated models decide visibly and reversibly.
+12. The runner, not the session, says whether the project's check passes.
+13. Three different tasks stopping in a row is a fault in the system, not in the tasks: pause and put the system right.
 
 ## 13. Starting this on a new project
 
 1. Write `DESIGN.md` and the outcomes list with the owner.
 2. Run `<kit>/bin/runner-init [--deploy] <workspace-dir> <repo-dir> [<repo-dir> ...]`. The workspace must be inside a git repository. It copies the two prompts, the reviewer steps, a starter `DELIVERY-RULES.yaml` holding the rules of section 12, a starter `TASKS.md`, an empty `DECISIONS.md` and `RUN-ORDER.md` into the workspace, and never overwrites a file. It writes `runner.conf`. With `--deploy` it copies the `deploy.sh` skeleton. It installs the pre-commit hook in each named repository and in the repository that holds the workspace, but only where there is no pre-commit hook; where one exists it prints the one line to add and changes nothing.
-3. Fill `runner.conf`: the project name, the product directories for the caller check, the directories free of the new-file check, the notifier, the pre-flight command, and an adapter and a pinned model id for each letter. The registry file and the live flag are optional. Check it with `<kit>/bin/runner-doctor <workspace-dir>/runner.conf`.
+3. Fill `runner.conf`: the project name, the product directories for the caller check, the directories free of the new-file check, the notifier, the pre-flight command, the project's own check (`CHECK_CMD`), and an adapter and a pinned model id for each letter. The registry file and the live flag are optional. Check it with `<kit>/bin/runner-doctor <workspace-dir>/runner.conf`.
 4. Put the project's outcomes in `DELIVERY-RULES.yaml`. Add a rule only when a failure is observed.
 5. Write the project's own commands into `deploy.sh` so that it proves live as section 9 requires, or state in the rules that the project has no deploy. Without a `deploy.sh` the runner's done message says nothing about live.
 6. Write the first tasks and the queue file. From the workspace, check with `QUEUE_DRY=1 QUEUE_ONCE=1 <kit>/bin/run_queue.sh`, then start with `tmux new -d -s <project>-runner <kit>/bin/run_queue.sh`. Watch with `<kit>/bin/runner-queue`.

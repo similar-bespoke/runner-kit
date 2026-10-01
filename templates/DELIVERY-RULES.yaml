@@ -31,3 +31,9 @@ rules:
     rule: "Progress is something the owner can open."
   - id: R11
     rule: "No approval steps or pass marks the owner did not ask for. Delegated models decide visibly and reversibly."
+  - id: R12
+    rule: "The runner, not the session, says whether the project's check passes."
+    enforced_by: "run_task.sh runs CHECK_CMD before a task and on its commit"
+  - id: R13
+    rule: "Three different tasks stopping in a row is a fault in the system, not in the tasks: pause and put the system right."
+    enforced_by: "run_queue.sh pauses after STOP_STREAK different tasks stop one after another"

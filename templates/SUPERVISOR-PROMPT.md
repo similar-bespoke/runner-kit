@@ -79,6 +79,11 @@ What you may do.
 - If the stop line starts "RUNNER CHECK" or "runner checks failed", the
   commit broke a rule in `DELIVERY-RULES.yaml`: decide the smallest fix (trim
   `TASKS.md`, wire a function in, name a file) as a retry or one task.
+- If the stop line says the project check passed before the task and fails
+  on its commit, the commit is in and the task is marked done, so a retry
+  would do nothing. Add the one task that makes the check pass again, citing
+  the stop line as what was observed, and answer `run <new id> then <ID>`.
+  Never propose weakening the check.
 - A question for the owner goes into task <ID>'s heading as
   `[ ] (waiting for the owner: <question>)`, in plain words, naming what a thing
   is, not its task number.

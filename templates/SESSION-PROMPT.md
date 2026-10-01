@@ -2,8 +2,8 @@
 
 `run_task.sh` sends everything below the line as the first message of a new
 session, with the model and effort from the task's M column in `TASKS.md`.
-It fills `<ID>`, `<PROJECT>`, `<WORKSPACE>`, `<REPOS>` and `<RUNNER>` from
-`runner.conf`, and `<REVIEW>` from the reviewer step of the task's adapter
+It fills `<ID>`, `<PROJECT>`, `<WORKSPACE>`, `<REPOS>`, `<RUNNER>` and `<CHECK>`
+from `runner.conf`, `<CHECK_BEFORE>` from its own run of that check, and `<REVIEW>` from the reviewer step of the task's adapter
 (`REVIEW-CLAUDE.md` or `REVIEW-CODEX.md`), in which it fills `<MODEL>` and
 `<REFFORT>`.
 
@@ -54,6 +54,11 @@ Report what the owner can open or use, and distinguish built code from a verifie
   sets one, in `DECISIONS.md`.
 - Run the task's done-when check and keep its output for the commit
   message. Do not commit on "tests pass" alone.
+- The project's own check is: `<CHECK>`. The runner runs it itself, before
+  you start and again on your commit. Before you started: <CHECK_BEFORE>.
+  If your commit turns it from passing to failing, the runner sends you
+  back to repair it, so run it yourself before you commit. Never weaken or
+  delete the check, or a test, to make it pass.
 <REVIEW>
 - If a check takes longer than a few minutes, start it in the background
   and wait for it with repeated foreground until-loops of under ten minutes
@@ -78,8 +83,10 @@ Report what the owner can open or use, and distinguish built code from a verifie
   at most one proposed task or change in `TASKS.md`, and stop. Decide this
   on the first attempt: a resume will not change the answer. If the
   done-when check fails for a reason already present on the branch head
-  before your change (run it on a clean head to confirm), that is blocked,
-  not a resume: name the failing test and the file, and stop.
+  before your change, that is blocked, not a resume: name the failing test
+  and the file, and stop. The runner's own run of the project's check before
+  you started (above) settles this for that check; for anything else, run it
+  on a clean head to confirm.
 - If the task's Build line leaves a choice to the owner and `DECISIONS.md` has no
   answer, that is a question: state it in one sentence, with the option you
   would pick and why, and stop.

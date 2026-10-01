@@ -18,7 +18,7 @@ command -v tmux >/dev/null && ok "tmux ($(tmux -V | awk '{print $2}'))" || bad "
 
 SIGNED=()
 for f in "$KIT"/adapters/*.sh(N); do
-  name="${f:t:r}"; [ "$name" = TEMPLATE ] && continue
+  name="${f:t:r}"; [ "$name" = TEMPLATE ] || [ "$name" = stub ] && continue
   if ( source "$f"; command -v "$AGENT_BIN" >/dev/null ); then
     if ( source "$f"; adapter_signed_in ); then ok "agent $name: installed, signed in"; SIGNED+=("$name")
     else warn "agent $name: installed, NOT signed in (run: $(source "$f"; print -r -- "$AGENT_LOGIN_CMD"))"; fi
@@ -46,6 +46,7 @@ if [ -n "${1:-}" ]; then
     [[ "$hooks" == /* ]] || hooks="$r/$hooks"
     grep -q "runner_checks.py" "$hooks/pre-commit" 2>/dev/null && ok "commit hook in $r" || bad "commit hook in $r (run bin/runner-init, or add the line it prints)"
   done
+  [ -n "${CHECK_CMD:-}" ] && ok "CHECK_CMD is set: the runner checks each task's commit itself" || warn "CHECK_CMD is empty: nothing but the session itself checks that a commit leaves the project sound"
   case "${NOTIFY:-none}" in
     none|desktop) ok "NOTIFY=${NOTIFY:-none}";;
     command) [ -n "${NOTIFY_CMD:-}" ] && ok "NOTIFY=command" || bad "NOTIFY=command needs NOTIFY_CMD";;

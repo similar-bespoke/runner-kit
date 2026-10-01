@@ -25,6 +25,14 @@
 # runs/<id>.stop for the supervising session.
 # Each task has one session id (runs/<id>.session); edits live in the working
 # tree and survive a crash; a resume continues with full context.
+# The project's own check (CHECK_CMD in runner.conf, for example its test
+# suite) is run by this script, not by the session: before a task's first
+# session and again on the task's commit. A commit that turns a passing check
+# into a failing one sends the same session back to repair it. A check that
+# already fails before the task is reported to the owner once and the task
+# runs; its commit cannot then be judged against the check.
+# Each session writes one line to runs/usage.log: the task, the attempt, the
+# letter and effort, the minutes, and what the adapter says the session used.
 # Everything that differs between agents is in adapters/<name>.sh. The letter
 # in the task's M column picks the adapter (ADAPTER_<letter>) and the model
 # (MODEL_<letter>) from runner.conf.
@@ -95,6 +103,40 @@ LOG="$RUNS/$ID-$(date +%Y%m%d-%H%M%S).log"
 say "task $ID  builder=$AGENT model=$MODEL effort=$EFFORT  max attempts=$MAX  repo HEAD ${BASE[$REPO]}"
 say "log $LOG"
 
+# ---- the project's check, run by the runner. A result is kept with the
+# commits and tracked changes it was run on (runs/check.last), so the check
+# after one task is the check before the next and is not run twice.
+sha() { if command -v shasum >/dev/null; then shasum; else sha1sum; fi; }
+run_check() {
+  local r key last
+  key="$( for r in "${ALL[@]}"; do git -C "$r" rev-parse HEAD; git -C "$r" status --porcelain --untracked-files=no; done | sha | cut -d' ' -f1 )"
+  last="$(cat "$RUNS/check.last" 2>/dev/null)"
+  if [ "${last%% *}" = "$key" ]; then CHECK_RC="${last##* }"; return 0; fi
+  ( cd "$REPO" && zsh -c "$CHECK_CMD" ) > "$RUNS/check.log" 2>&1; CHECK_RC=$?
+  print -r -- "$key $CHECK_RC" > "$RUNS/check.last"
+}
+CHECK_BEFORE="not run: runner.conf sets no CHECK_CMD"
+if [ -n "${CHECK_CMD:-}" ]; then
+  if [ ! -f "$STATE" ]; then
+    run_check; print -r -- "$CHECK_RC" > "$RUNS/$ID.check"
+    if [ "$CHECK_RC" = 0 ]; then
+      rm -f "$RUNS/check.red"
+    else
+      say "the project's check fails before task $ID starts (exit $CHECK_RC, output in $RUNS/check.log). The task runs; its commit is not judged against the check."
+      if [ ! -f "$RUNS/check.red" ]; then
+        print -r -- "$ID $(date '+%Y-%m-%d %H:%M:%S')" > "$RUNS/check.red"
+        notify "$PROJECT runner: the project's check fails before task $ID starts, so no commit can be judged against it until it passes. Command: $CHECK_CMD. Last lines: $(tail -3 "$RUNS/check.log" | tr '\n' ' ' | cut -c1-300)"
+      fi
+    fi
+  fi
+  case "$(cat "$RUNS/$ID.check" 2>/dev/null)" in
+    0)  CHECK_BEFORE="it passed";;
+    "") CHECK_BEFORE="not run before this task";;
+    *)  CHECK_BEFORE="it FAILED before you changed anything (output in $RUNS/check.log), so a failure it reports may not be yours";;
+  esac
+fi
+CHECKFAIL=""
+
 # ---- runner checks before a first session: a task whose named prerequisite
 # is not done does not start; the supervising session runs the prerequisite
 # first.
@@ -124,6 +166,7 @@ session_prompt() {
   p="${p//'<ID>'/$ID}"; p="${p//'<PROJECT>'/$PROJECT}"; p="${p//'<WORKSPACE>'/$DIR}"
   p="${p//'<REPOS>'/$repos}"; p="${p//'<RUNNER>'/$BIN}"
   p="${p//'<MODEL>'/$MODEL}"; p="${p//'<REFFORT>'/$REFFORT}"
+  p="${p//'<CHECK>'/${CHECK_CMD:-none is set for this project}}"; p="${p//'<CHECK_BEFORE>'/$CHECK_BEFORE}"
   print -r -- "$p"
 }
 
@@ -152,7 +195,11 @@ while [ $attempt -lt $MAX ]; do
   RAW="$RUNS/$ID-$(date +%Y%m%d-%H%M%S)-a$attempt.jsonl"
   if [ -f "$STATE" ]; then
     SESSION="$(cat "$STATE")"; RESUME=1
+    if [ -n "$CHECKFAIL" ]; then
+      PROMPT="Task $ID is not finished. Your commit landed ($COMMIT), but the project's check, which the runner runs itself and which passed before you started, now fails. Run it from $REPO: $CHECK_CMD. The last lines of its output were: $CHECKFAIL Find what your commit broke and repair it in one further commit whose subject starts with '$ID:'. Do not weaken or delete the check or a test to make it pass; if the check itself is wrong, end with RUNNER: blocked and say why. All rules of the original session prompt still apply."
+    else
     PROMPT="Resume task $ID. The previous session on this task stopped before its commit landed. First run git status and git diff in $REPO to see what is already done, re-read task $ID in $DIR/TASKS.md, then continue from where the work stopped. Do not redo finished work. Finish the done-when check, the review, the commit with the task id first in the subject, and mark the task done in TASKS.md. All rules of the original session prompt still apply."
+    fi
     say ""; say "attempt $attempt of $MAX: resuming session $SESSION"
   else
     RESUME=0; SESSION=""
@@ -162,8 +209,15 @@ while [ $attempt -lt $MAX ]; do
   fi
   say "raw $RAW"
 
+  STARTED=$SECONDS
   start_session
   say "--- session exit $STATUS"
+  # What the session used, one line per session, so the owner can see what each
+  # task, letter and effort costs. An adapter that reports nothing leaves the
+  # time alone.
+  USED="$(( (SECONDS - STARTED + 30) / 60 )) min${RESULT_USAGE:+, $RESULT_USAGE}"
+  print -r -- "$(date '+%Y-%m-%d %H:%M:%S') task $ID attempt $attempt $LETTER $EFFORT: $USED" >> "$RUNS/usage.log"
+  say "--- used: $USED"
 
   # A session may close a task as "split" in TASKS.md with no commit: that is
   # a stop for a restart on the new ids, not a resume.
@@ -182,7 +236,33 @@ while [ $attempt -lt $MAX ]; do
       notify "$PROJECT runner stopped on task $ID: its commit breaks a runner check. $(remaining)."
       wait; exit 4
     fi
-    rm -f "$STATE"
+    # The project's check on the commit. Only a check that passed before the
+    # task can be broken by it; a blocked or question line from the repairing
+    # session stops the task like any other.
+    UNCHECKED=""
+    if [ -n "${CHECK_CMD:-}" ]; then
+      if [ "$(cat "$RUNS/$ID.check" 2>/dev/null)" = 0 ]; then
+        run_check
+        if [ "$CHECK_RC" != 0 ]; then
+          CHECKFAIL="$(tail -15 "$RUNS/check.log" | tr '\n' ' ' | cut -c1-900)"
+          say ""; say "the project's check passed before task $ID and fails on its commit ($COMMIT); output in $RUNS/check.log."
+          case "$RESULT_VERDICT" in
+            RUNNER:*blocked*|RUNNER:*question*)
+              if [ $attempt -gt 1 ]; then
+                printf '%s (the project check, which passed before task %s, fails on its commit %s)\n' "$RESULT_VERDICT" "$ID" "$COMMIT" > "$RUNS/$ID.stop"
+                say "STOP: $RESULT_VERDICT"
+                notify "$PROJECT runner stopped on task $ID: its commit breaks the project's check and the session cannot repair it. $RESULT_VERDICT $(remaining)."
+                wait; exit 4
+              fi;;
+          esac
+          say "Sending the session back to repair it."
+          sleep 1; continue
+        fi
+      else
+        UNCHECKED=" The project's check was already failing before this task, so this commit was not judged against it."
+      fi
+    fi
+    rm -f "$STATE" "$RUNS/$ID.check"
     say ""; say "result for task $ID: OK"
     say "  commit:      $COMMIT"; say "  attempts:    $attempt"; say "  marked done: yes"
     # Progress the owner can open: how much built work is not live yet, and the
@@ -198,7 +278,7 @@ while [ $attempt -lt $MAX ]; do
       fi
     fi
     say "  not live:   ${PENDING:- nothing}"
-    notify "$PROJECT task $ID done: $COMMIT ($attempt attempt$([ $attempt = 1 ] || echo s)). $(remaining).$PENDING"
+    notify "$PROJECT task $ID done: $COMMIT ($attempt attempt$([ $attempt = 1 ] || echo s); last session $USED). $(remaining).$PENDING$UNCHECKED"
     wait; exit 0
   fi
 
@@ -281,6 +361,12 @@ PY2
   sleep 5
 done
 
+if [ -n "$CHECKFAIL" ]; then
+  printf 'RUNNER: blocked the project check passed before task %s and still fails on its commit after %s attempts: %s\n' "$ID" "$MAX" "$(echo "$CHECKFAIL" | cut -c1-400)" > "$RUNS/$ID.stop"
+  say ""; say "STOP: task $ID's commit breaks the project's check and $MAX attempts did not repair it. Output in $RUNS/check.log."
+  notify "$PROJECT runner stopped on task $ID: its commit breaks the project's check ($CHECK_CMD) and $MAX attempts did not repair it. $(remaining)."
+  wait; exit 4
+fi
 printf 'RUNNER: blocked %s attempts used without the commit landing; last words: %s\n' "$MAX" "$(echo "${RESULT_TEXT:-}" | tr '\n' ' ' | cut -c1-400)" > "$RUNS/$ID.stop"
 say ""; say "STOP: task $ID not completed after $MAX attempts. Session $SESSION is kept; run again to resume, or read the logs in $RUNS."
 notify "$PROJECT runner stopped on task $ID after $MAX attempts. Work is kept; run the task again to resume. Log: $(basename "$LOG")."
