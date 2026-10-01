@@ -1,0 +1,62 @@
+#!/usr/bin/env zsh
+# Start a project on the runner.
+#   runner-init [--deploy] <workspace-dir> <repo-dir> [<repo-dir> ...]
+# Copies the templates into the workspace without overwriting any file that is
+# already there, writes runner.conf, and installs the pre-commit hook in each
+# named repository, and in the repository that holds the workspace, only where
+# there is no pre-commit hook. Where one exists it prints the one line to add
+# and changes nothing. With --deploy it also copies the deploy.sh skeleton. It
+# writes a .gitignore for runs/ in the workspace when there is none.
+set -u
+DEPLOY=0; [ "${1:-}" = "--deploy" ] && { DEPLOY=1; shift; }
+[ $# -ge 2 ] || { print "usage: runner-init [--deploy] <workspace-dir> <repo-dir> [<repo-dir> ...]" >&2; exit 2; }
+BIN="${0:A:h}"; KIT="${BIN:h}"; TPL="$KIT/templates"
+mkdir -p "$1/runs" || exit 2
+WS="${1:A}"; shift
+REPOS=()
+for r in "$@"; do
+  git -C "$r" rev-parse --git-dir >/dev/null 2>&1 || { print "not a git repository: $r" >&2; exit 2; }
+  REPOS+=("${r:A}")
+done
+
+FILES=(SESSION-PROMPT.md REVIEW-CLAUDE.md REVIEW-CODEX.md SUPERVISOR-PROMPT.md DELIVERY-RULES.yaml TASKS.md DECISIONS.md RUN-ORDER.md)
+[ $DEPLOY = 1 ] && FILES+=(deploy.sh)
+for f in "${FILES[@]}"; do
+  if [ -e "$WS/$f" ]; then print "kept     $WS/$f"; else sed "s|<KIT>|$KIT|g" "$TPL/$f" > "$WS/$f" && print "wrote    $WS/$f"; fi
+done
+[ $DEPLOY = 1 ] && chmod +x "$WS/deploy.sh"
+# runs/ holds logs and state, and stays out of git.
+if [ ! -e "$WS/.gitignore" ]; then print -r -- "runs/" > "$WS/.gitignore" && print "wrote    $WS/.gitignore"
+elif ! grep -qx 'runs/' "$WS/.gitignore"; then print "kept     $WS/.gitignore. Add this line to it:  runs/"
+else print "kept     $WS/.gitignore"; fi
+if [ -e "$WS/runner.conf" ]; then
+  print "kept     $WS/runner.conf"
+else
+  sed -e "s|^PROJECT=.*|PROJECT='${WS:t}'|" -e "s|^WORKSPACE=.*|WORKSPACE='$WS'|" -e "s|^REPOS=.*|REPOS='${REPOS[*]}'|" \
+    -e "s|^DEPLOYS=.*|DEPLOYS=$([ $DEPLOY = 1 ] && print yes || print no)|" \
+    "$TPL/runner.conf" > "$WS/runner.conf" && print "wrote    $WS/runner.conf"
+fi
+
+HOOKED=("${REPOS[@]}")
+if WSREPO="$(git -C "$WS" rev-parse --show-toplevel 2>/dev/null)"; then
+  (( ${HOOKED[(Ie)${WSREPO:A}]} )) || HOOKED+=("${WSREPO:A}")
+else
+  print "WARNING: $WS is not inside a git repository; run_task.sh needs TASKS.md under git."
+fi
+LINE="[ -z \"\${RUNNER_TASK_ID:-}\" ] || python3 \"$BIN/runner_checks.py\" staged \"\$RUNNER_TASK_ID\" \"\$(git rev-parse --show-toplevel)\" || exit 1"
+for r in "${HOOKED[@]}"; do
+  hook="$(git -C "$r" rev-parse --absolute-git-dir)/hooks/pre-commit"
+  if custom="$(git -C "$r" config --get core.hooksPath)" && [ "${custom:A}" != "${hook:h:A}" ]; then
+    print "WARNING: $r uses core.hooksPath=$custom, so $hook would not run. Add this line to the pre-commit hook there, directly after its first line:"
+    print -r -- "  $LINE"
+  elif [ -e "$hook" ]; then
+    print "kept     $hook (a hook exists). Add this line directly after its first line:"
+    print -r -- "  $LINE"
+  else
+    mkdir -p "${hook:h}" && sed "s|<RUNNER>|$BIN|" "$TPL/pre-commit" > "$hook" && chmod +x "$hook" && print "wrote    $hook"
+  fi
+done
+print "Next: write DESIGN.md, the outcomes in DELIVERY-RULES.yaml and the first tasks; fill runner.conf; check it with"
+print "  $BIN/runner-doctor $WS/runner.conf"
+print "then start the queue with"
+print "  cd $WS && tmux new -d -s ${WS:t}-runner $BIN/run_queue.sh"

@@ -1,0 +1,20 @@
+{
+  "description": "A valid task heading in TASKS.md. The regular expression uses syntax common to Python and JavaScript. Groups: 1 the task id, 2 the title (a sentence stating the outcome), 3 the status (space not started, ~ built but held, x done), 4 a note after the status (the commit hash on a done task, or a waiting question), 5 the builder's letter, 6 the builder's effort, 7 the reviewer (a letter and an effort, or owner). Two spaces stand before M:. A heading with no M column is the owner's own task, and the runner parks it.",
+  "regex": "^### (\\d+\\.\\d+[a-z]?) (.+?) \\[([ ~x])\\]( \\S(?:(?!  M: ).)*)?(?:  M: ([A-Z]) ([a-z]+), R: ([A-Z] [a-z]+|owner))?$",
+  "valid": [
+    "### 1.1 Each to-do item is shown with its number [ ]  M: S medium, R: O high",
+    "### 2.3 A ticked item stays ticked after the page is reloaded [ ]  M: O medium, R: O high",
+    "### 3.2a The list is saved when the window closes [x] 1690d66  M: S medium, R: S medium",
+    "### 4.1 Deleting an item asks first [~]  M: O high, R: owner",
+    "### 10.4 The owner chooses the colour of done items [ ]",
+    "### 5.2 Shared lists show who ticked an item [ ] (waiting for the owner: show names or initials?)  M: C medium, R: O high"
+  ],
+  "invalid": [
+    "## 1.1 A second-level heading is not a task [ ]  M: S medium, R: O high",
+    "### 1 An id needs a dot and a second number [ ]  M: S medium, R: O high",
+    "### 3.2a1 An id has at most one suffix [ ]  M: S medium, R: O high",
+    "### 1.2 A heading needs a status",
+    "### 1.3 The status is one of space, tilde or x [done]  M: S medium, R: O high",
+    "### 1.4 The builder is one capital letter [ ]  M: sonnet medium, R: O high"
+  ]
+}

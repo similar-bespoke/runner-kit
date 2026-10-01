@@ -1,0 +1,29 @@
+#!/usr/bin/env zsh
+# Show which task a project's runner is on and which queued tasks are not done.
+# Settings: the file named by RUNNER_CONF, or runner.conf in the current directory.
+#   runner-queue          refresh every 10 seconds (Ctrl-c to stop)
+#   runner-queue once     print once and exit
+#   runner-queue log      follow the runner's log
+CONF="${RUNNER_CONF:-$PWD/runner.conf}"
+[ -f "$CONF" ] || { print "no settings file: set RUNNER_CONF or start from the directory that holds runner.conf" >&2; exit 2; }
+export RUNNER_CONF="${CONF:A}"; source "$RUNNER_CONF"
+DIR="$WORKSPACE"
+
+show() {
+  cd "$DIR" || exit 1
+  print "$PROJECT\n\nNOW"
+  grep "running run_task.sh" runs/queue.log 2>/dev/null | tail -1 | sed 's/: running.*//'
+  local parked=(runs/waiting/*(N:t))
+  (( $#parked )) && print "\nPARKED FOR THE OWNER\n${(j:, :)parked}"
+  print "\nREMAINING"
+  grep -E '^[0-9]+\.[0-9a-z]+$' RUN-ORDER.md | while read id; do
+    grep -m1 "^### $id " TASKS.md
+  done | grep -v '\[x\]' | sed 's/  M:.*//; s/^### //; s/ \[.\]$//'
+}
+
+case "${1:-}" in
+  once) show ;;
+  log)  exec tail -f "$DIR/runs/queue.log" ;;
+  "")   while true; do out="$(show)"; clear; print -r -- "$out"; sleep 10; done ;;
+  *)    print "usage: runner-queue [once|log]"; exit 1 ;;
+esac

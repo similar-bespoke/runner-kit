@@ -1,0 +1,84 @@
+# The questions an installing agent asks the owner. Ask one at a time, each
+# with its recommended answer, and only those the agent could not answer
+# itself by the "detect" steps. "fills" names the setting each answer goes
+# into. The settings file is <workspace>/runner.conf (keys in
+# schema/runner.conf.schema.json), written by bin/runner-init and then edited.
+version: 1
+questions:
+  - id: workspace_and_repos
+    text: "Which directory holds the project's workspace (tasks, decisions, queue), and which code repository or repositories does the runner work in?"
+    type: "one directory path, then one or more repository paths"
+    default: "The repository the agent was started in, with the workspace in a new directory runner-workspace/ at its root."
+    recommended: "Use the current repository, with the workspace inside it at runner-workspace/. A workspace in a separate git repository also works; nothing is created outside the project either way."
+    detect:
+      - "git rev-parse --show-toplevel in the directory the agent was started in gives the code repository."
+      - "A directory that already holds TASKS.md and runner.conf is an existing workspace: reuse it; runner-init keeps every file already there."
+      - "The workspace must be inside a git repository: check with git -C <workspace-dir> rev-parse --show-toplevel after creating the directory."
+    fills:
+      - "runner.conf: WORKSPACE, REPOS, PROJECT (written by bin/runner-init from its arguments; then set PROJECT by hand to the project's own name, which the prompts and notices use)"
+      - "runner.conf: PRODUCT_DIRS (the directories that hold product code, each ending in /), FREE_DIRS (the test directories)"
+  - id: builder_and_reviewer
+    text: "Which agent and model build tasks by default, and which review them?"
+    type: "for each letter in use: an adapter name and an exact model id; then a default builder letter and a default reviewer"
+    default: "Letter S for building at medium effort, letter O for review at high effort, both on the one agent that is signed in."
+    recommended: "Build on the agent's faster model (letter S), review on its strongest model (letter O), stop sessions on O. Give exact model ids, not aliases. Leave the letter of an agent that is not signed in with an empty model."
+    detect:
+      - "bin/runner-doctor lists each supported agent as installed and signed in, or not."
+      - "The installing agent usually knows the exact id of the model it is running on; offer that id and ask the owner to confirm it and to name the other one."
+      - "The self-test proves the default builder's id: a wrong id fails line (b)."
+    tell_the_owner: "Task sessions run unattended and may run shell commands in the named repositories without asking. For the claude adapter this is CLAUDE_ALLOWED_TOOLS (default Bash); it can be narrowed."
+    fills:
+      - "runner.conf: ADAPTER_<letter>, MODEL_<letter> for each letter"
+      - "runner.conf: DEFAULT_BUILDER, DEFAULT_EFFORT, DEFAULT_REVIEWER, SUPERVISOR"
+      - "runner.conf: CLAUDE_ALLOWED_TOOLS, if the owner narrows it"
+  - id: notify
+    text: "How should the runner tell you that a task is done, stopped or waiting for you?"
+    type: "one of: none, desktop, command (with the command)"
+    default: "none"
+    recommended: "desktop on a machine you sit at; none on a server. A custom command (one that takes the message as its last argument) can be set later."
+    detect:
+      - "command -v osascript or command -v notify-send shows whether a desktop notice is possible."
+      - "With no display (no DISPLAY or WAYLAND_DISPLAY on Linux, or an ssh session), recommend none."
+    fills:
+      - "runner.conf: NOTIFY, NOTIFY_CMD"
+  - id: deploy
+    text: "Does the project deploy to somewhere it runs, and if so, what command proves which commit is live?"
+    type: "yes or no; if yes, one command that prints the commit the running system reports"
+    default: "no"
+    recommended: "no, unless a deploy command and a version check already exist. With yes, runner-init --deploy copies a deploy.sh skeleton whose marked places the owner or the supervising session must fill before the first deploy."
+    detect:
+      - "A deploy script, a Procfile, a container file, a CI deploy job or a platform configuration file in the repository suggests yes; say what was found and ask."
+      - "An endpoint or command that prints a commit hash (for example a /version route) is a candidate for the proving command."
+    fills:
+      - "runner.conf: DEPLOYS, LIVE_CHECK_CMD"
+      - "<workspace>/deploy.sh (copied by bin/runner-init --deploy; its PROJECT section is written by hand)"
+  - id: outcomes
+    text: "What are the three to five outcomes this project must deliver for its user?"
+    type: "three to five sentences, each something the user gets"
+    default: null
+    recommended: "Draft them from the README and the design notes, show the draft, and let the owner correct it. Each is an outcome a user can see, not an activity."
+    detect:
+      - "README, DESIGN.md or other design notes in the repository usually state what the project is for. Draft from them; never file a draft the owner has not seen."
+    fills:
+      - "<workspace>/DELIVERY-RULES.yaml: goal_outcomes, as - id: G1 / outcome: \"...\" up to Gn"
+  - id: protocol_scope
+    text: "Should every agent session on this machine load the runner protocol, or only sessions in this project?"
+    type: "one of: project, machine"
+    default: "project"
+    recommended: "project. A machine-wide pointer changes how the agent behaves in every other project too."
+    detect:
+      - "Nothing to detect; this is the owner's choice. Make no edit without an explicit yes naming the file."
+    pointer_line: "Work in this project follows the runner protocol: before acting, read <kit>/PROTOCOL.md and the DELIVERY-RULES.yaml and DECISIONS.md in <workspace>. You are the supervising session unless a runner script started you."
+    where_the_pointer_goes:
+      claude:
+        project: "CLAUDE.md at the root of the first code repository (created if absent)"
+        machine: "~/.claude/CLAUDE.md"
+      codex:
+        project: "AGENTS.md at the root of the first code repository (created if absent)"
+        machine: "AGENTS.md in the Codex home directory ($CODEX_HOME, or ~/.codex)"
+    rules:
+      - "Append the one pointer line; change nothing else in the file. For machine scope, reword its start to 'In a project that has a runner.conf, work follows the runner protocol'."
+      - "Write the pointer for each agent that is signed in and mapped to a letter."
+      - "machine scope is the one edit outside the kit directory and the named project, and only on the owner's yes to this question."
+    fills:
+      - "The instruction file named above for each agent in use; no runner.conf key."

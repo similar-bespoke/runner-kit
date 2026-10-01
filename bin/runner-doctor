@@ -1,0 +1,76 @@
+#!/usr/bin/env zsh
+# Check a machine, and optionally one project's settings, before a queue runs.
+#   runner-doctor                 the kit's requirements and the agents found
+#   runner-doctor <runner.conf>   also that project's settings and hooks
+# One line per fact: "ok", "MISSING" or "WARN". Exit 0 when nothing is MISSING.
+# It changes nothing.
+BIN="${0:A:h}"; KIT="${BIN:h}"; BAD=0
+ok()   { print -r -- "ok       $*"; }
+bad()  { print -r -- "MISSING  $*"; BAD=1; }
+warn() { print -r -- "WARN     $*"; }
+
+command -v git >/dev/null && ok "git ($(git --version | awk '{print $3}'))" || bad "git"
+if command -v python3 >/dev/null && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'; then
+  ok "python3 ($(python3 -c 'import platform; print(platform.python_version())'))"
+else bad "python3 3.9 or newer"; fi
+[ "${ZSH_VERSION%%.*}" -ge 5 ] && ok "zsh ($ZSH_VERSION)" || bad "zsh 5 or newer (this is $ZSH_VERSION)"
+command -v tmux >/dev/null && ok "tmux ($(tmux -V | awk '{print $2}'))" || bad "tmux (needed to run the queue unattended)"
+
+SIGNED=()
+for f in "$KIT"/adapters/*.sh(N); do
+  name="${f:t:r}"; [ "$name" = TEMPLATE ] && continue
+  if ( source "$f"; command -v "$AGENT_BIN" >/dev/null ); then
+    if ( source "$f"; adapter_signed_in ); then ok "agent $name: installed, signed in"; SIGNED+=("$name")
+    else warn "agent $name: installed, NOT signed in (run: $(source "$f"; print -r -- "$AGENT_LOGIN_CMD"))"; fi
+  else
+    warn "agent $name: not installed"
+  fi
+done
+(( $#SIGNED )) || bad "at least one supported agent installed and signed in"
+
+if [ -n "${1:-}" ]; then
+  [ -f "$1" ] || { bad "settings file $1"; exit 1; }
+  export RUNNER_CONF="${1:A}"; source "$RUNNER_CONF"
+  [ -n "${PROJECT:-}" ] && ok "PROJECT=$PROJECT" || bad "PROJECT is empty"
+  if [ -d "${WORKSPACE:-}" ] && git -C "$WORKSPACE" rev-parse --show-toplevel >/dev/null 2>&1; then ok "WORKSPACE is inside a git repository"
+  else bad "WORKSPACE (${WORKSPACE:-empty}) must be a directory inside a git repository"; fi
+  for f in TASKS.md DECISIONS.md DELIVERY-RULES.yaml SESSION-PROMPT.md SUPERVISOR-PROMPT.md RUN-ORDER.md; do
+    [ -f "${WORKSPACE:-}/$f" ] || bad "$f in the workspace"
+  done
+  REPO_LIST=(${=REPOS:-}); (( $#REPO_LIST )) || bad "REPOS is empty"
+  WSREPO="$(git -C "${WORKSPACE:-.}" rev-parse --show-toplevel 2>/dev/null)"
+  ALLR=(); for r in "${REPO_LIST[@]}" $WSREPO; do (( ${ALLR[(Ie)${r:A}]} )) || ALLR+=("${r:A}"); done
+  for r in "${ALLR[@]}"; do
+    if ! git -C "$r" rev-parse --git-dir >/dev/null 2>&1; then bad "repository $r"; continue; fi
+    hooks="$(git -C "$r" config --get core.hooksPath || print -r -- "$(git -C "$r" rev-parse --absolute-git-dir)/hooks")"
+    [[ "$hooks" == /* ]] || hooks="$r/$hooks"
+    grep -q "runner_checks.py" "$hooks/pre-commit" 2>/dev/null && ok "commit hook in $r" || bad "commit hook in $r (run bin/runner-init, or add the line it prints)"
+  done
+  case "${NOTIFY:-none}" in
+    none|desktop) ok "NOTIFY=${NOTIFY:-none}";;
+    command) [ -n "${NOTIFY_CMD:-}" ] && ok "NOTIFY=command" || bad "NOTIFY=command needs NOTIFY_CMD";;
+    *) bad "NOTIFY must be none, desktop or command (it is $NOTIFY)";;
+  esac
+  USABLE=()
+  for var in ${(k)parameters[(I)ADAPTER_[A-Z]]}; do
+    L="${var#ADAPTER_}"; A="${(P)var}"; MV="MODEL_$L"; M="${(P)MV:-}"
+    [ -n "$A" ] || continue
+    if [ ! -f "$KIT/adapters/$A.sh" ]; then bad "ADAPTER_$L=$A has no file adapters/$A.sh"
+    elif [ -z "$M" ]; then warn "letter $L: MODEL_$L is empty, so tasks with M: $L cannot run"
+    elif (( ! ${SIGNED[(Ie)$A]} )); then warn "letter $L: agent $A is not signed in"
+    else
+      [ -f "${WORKSPACE:-}/REVIEW-${(U)A}.md" ] && { ok "letter $L: $A, model $M"; USABLE+=("$L"); } || bad "REVIEW-${(U)A}.md in the workspace (letter $L)"
+    fi
+  done
+  for key in DEFAULT_BUILDER SUPERVISOR; do
+    L="${(P)key:-}"
+    (( ${USABLE[(Ie)$L]} )) && ok "$key=$L" || bad "$key=${L:-empty} must be a letter with an adapter, a model and a signed-in agent"
+  done
+  if [ "${DEPLOYS:-no}" = yes ]; then
+    [ -x "${WORKSPACE:-}/deploy.sh" ] && ok "deploy.sh in the workspace" || bad "DEPLOYS=yes needs an executable deploy.sh in the workspace"
+    [ -n "${LIVE_CHECK_CMD:-}" ] || warn "LIVE_CHECK_CMD is empty; deploy.sh cannot prove live until it or live_commit is written"
+  else
+    ok "DEPLOYS=no (the done message says nothing about live)"
+  fi
+fi
+exit $BAD

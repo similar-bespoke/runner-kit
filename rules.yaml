@@ -1,0 +1,59 @@
+# The carrying rules (PROTOCOL.md section 12). Each exists because of an
+# observed failure. code_enforced is full, part or none; "check" names the
+# code that enforces it.
+rules:
+  - id: R01
+    rule: "Every task names an outcome the user gets. Work that serves none is parked."
+    check_point: "When a task is written (PROTOCOL.md section 4): the line under the heading names a G id."
+    code_enforced: none
+    check: null
+  - id: R02
+    rule: "A task comes from an observed failure or the owner's order, never from a reviewer's suggestion."
+    check_point: "At commit, in every repository the project touches."
+    code_enforced: part
+    check: "bin/runner_checks.py, checks 'new task' and 'growth': at most one new task heading per commit, no id with a second suffix, TASKS.md grows by at most 20 lines. Code cannot tell where a task came from."
+  - id: R03
+    rule: "Measure a new model question on stored cases before any product code."
+    check_point: "When a task is written; restated in the session prompt."
+    code_enforced: none
+    check: null
+  - id: R04
+    rule: "No function without a caller, no file the task does not name, no machinery for a failure nobody has seen."
+    check_point: "At commit, and again by run_task.sh on the finished commit."
+    code_enforced: part
+    check: "bin/runner_checks.py, checks 'caller' (Python functions under PRODUCT_DIRS) and 'new file'. Unneeded machinery is left to the one reviewer."
+  - id: R05
+    rule: "One reviewer per task, on the diff only."
+    check_point: "In the task session, before its commit (the REVIEW-<ADAPTER>.md step)."
+    code_enforced: none
+    check: null
+  - id: R06
+    rule: "A question for the owner is asked once and waits; engineering is not the owner's to answer."
+    check_point: "In the queue, on every pass."
+    code_enforced: full
+    check: "bin/run_queue.sh: a parked task (runs/waiting/<id>) runs again only when the owner appends to DECISIONS.md; entries signed by a supervising session do not release it; a third stop parks the task."
+  - id: R07
+    rule: "A supervising session writes no product code."
+    check_point: "In the supervising session and the stop session (SUPERVISOR-PROMPT.md)."
+    code_enforced: none
+    check: null
+  - id: R08
+    rule: "Deploy early and often; ten built changes not live is a stop."
+    check_point: "When a task is done, in the runner's done message."
+    code_enforced: part
+    check: "bin/run_task.sh counts commits since runs/live-sha and writes DEPLOY NEEDED into the done message at ten. It warns; it does not stop the queue."
+  - id: R09
+    rule: "Live is what the deploy check says, then what the first live result shows against its source."
+    check_point: "At deploy, and whenever deploy.sh check is run."
+    code_enforced: part
+    check: "templates/deploy.sh: LIVE is printed and runs/live-sha written only after the running system reports the commit and its process started after the deploy began. Reading the first live result against its source is the supervising session's."
+  - id: R10
+    rule: "Progress is something the owner can open."
+    check_point: "In every report to the owner."
+    code_enforced: none
+    check: null
+  - id: R11
+    rule: "No approval steps or pass marks the owner did not ask for. Delegated models decide visibly and reversibly."
+    check_point: "At commit, in the repository that holds the workspace."
+    code_enforced: part
+    check: "bin/runner_checks.py, check 'gate': a start condition written into TASKS.md or RUN-ORDER.md is refused unless it cites a decision signed (owner, <date>)."

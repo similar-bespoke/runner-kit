@@ -1,0 +1,183 @@
+# The machine-readable index of the runner kit. An installing agent reads this
+# file, interview.yaml and PROTOCOL.md in full before acting.
+# <kit> is the directory this file is in. <workspace> and <repo> come from
+# the answers to interview.yaml.
+kit:
+  name: runner-kit
+  version: 0.1.0
+  licence: MIT
+  summary: "A task runner for coding agents: a written queue of small tasks, one fresh unattended session per task, rules enforced by code at commit time."
+
+requirements:
+  - name: git
+    check: "git --version"
+  - name: python3
+    minimum: "3.9"
+    note: "Standard library only."
+    check: "python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'"
+  - name: zsh
+    minimum: "5"
+    note: "The scripts are zsh and are not ported to another shell."
+    check: "zsh -c 'print $ZSH_VERSION'"
+  - name: tmux
+    note: "Runs the queue unattended. Not needed by the self-test."
+    check: "tmux -V"
+  - name: an agent command-line tool, installed and signed in
+    any_of:
+      - {adapter: claude, command: claude, signed_in_check: "claude auth status", sign_in: "claude auth login"}
+      - {adapter: codex, command: codex, signed_in_check: "codex login status", sign_in: "codex login"}
+  - all_at_once: "<kit>/bin/runner-doctor"
+
+files:
+  - {path: INSTALL-PROMPT.md, purpose: "The one prompt an owner pastes into a coding agent to install the kit.", installs_to: "stays in the kit"}
+  - {path: README.md, purpose: "What the kit is, for a person.", installs_to: "stays in the kit"}
+  - {path: PROTOCOL.md, purpose: "The protocol every session follows.", installs_to: "stays in the kit; the workspace files and the optional pointer line refer to it by path"}
+  - {path: manifest.yaml, purpose: "This index.", installs_to: "stays in the kit"}
+  - {path: interview.yaml, purpose: "The questions an installing agent asks, and how to answer them without asking.", installs_to: "stays in the kit"}
+  - {path: rules.yaml, purpose: "The carrying rules, with where each is checked and whether code enforces it.", installs_to: "stays in the kit"}
+  - {path: .gitignore, purpose: "Keeps runs/ and temporary files out of the kit's git history.", installs_to: "stays in the kit"}
+  - {path: LICENSE, purpose: "The MIT licence.", installs_to: "stays in the kit"}
+  - {path: bin/run_queue.sh, purpose: "Walks the queue, one task at a time; starts a stop session when a task stops.", installs_to: "stays in the kit; run from the workspace"}
+  - {path: bin/run_task.sh, purpose: "Runs one task to its commit, retrying and resuming.", installs_to: "stays in the kit; run from the workspace"}
+  - {path: bin/runner_checks.py, purpose: "The commit checks and the prerequisite check.", installs_to: "stays in the kit; called by the pre-commit hook and by run_task.sh"}
+  - {path: bin/render_stream.py, purpose: "Turns an agent's event stream into one readable log line per event.", installs_to: "stays in the kit"}
+  - {path: bin/runner-init, purpose: "Starts a project: copies the templates, writes runner.conf, installs the hook.", installs_to: "stays in the kit"}
+  - {path: bin/runner-doctor, purpose: "Checks the requirements, the agents and, given a runner.conf, a project's settings and hooks. Changes nothing.", installs_to: "stays in the kit"}
+  - {path: bin/runner-queue, purpose: "Shows the task in hand, parked tasks and tasks remaining.", installs_to: "stays in the kit; run from the workspace"}
+  - {path: bin/runner-notify, purpose: "Sends one message through the notifier named by NOTIFY.", installs_to: "stays in the kit"}
+  - {path: adapters/claude.sh, purpose: "Adapter for Claude Code.", installs_to: "stays in the kit; sourced by run_task.sh and run_queue.sh"}
+  - {path: adapters/codex.sh, purpose: "Adapter for Codex.", installs_to: "stays in the kit; sourced by run_task.sh and run_queue.sh"}
+  - {path: adapters/TEMPLATE.sh, purpose: "The adapter contract, for adding another agent.", installs_to: "stays in the kit"}
+  - {path: notify/none.sh, purpose: "Notifier: the log only.", installs_to: "stays in the kit"}
+  - {path: notify/desktop.sh, purpose: "Notifier: a desktop notice (osascript on macOS, notify-send on Linux), with the log as fallback.", installs_to: "stays in the kit"}
+  - {path: notify/command.sh, purpose: "Notifier: the owner's own command, with the message as one argument.", installs_to: "stays in the kit"}
+  - {path: templates/runner.conf, purpose: "The settings file, with a comment on every key.", installs_to: "<workspace>/runner.conf, with PROJECT, WORKSPACE, REPOS and DEPLOYS filled by runner-init"}
+  - {path: templates/SESSION-PROMPT.md, purpose: "The first message of every task session.", installs_to: "<workspace>/SESSION-PROMPT.md"}
+  - {path: templates/SUPERVISOR-PROMPT.md, purpose: "The first message of every stop session.", installs_to: "<workspace>/SUPERVISOR-PROMPT.md"}
+  - {path: templates/REVIEW-CLAUDE.md, purpose: "The reviewer step for the claude adapter.", installs_to: "<workspace>/REVIEW-CLAUDE.md"}
+  - {path: templates/REVIEW-CODEX.md, purpose: "The reviewer step for the codex adapter.", installs_to: "<workspace>/REVIEW-CODEX.md"}
+  - {path: templates/DELIVERY-RULES.yaml, purpose: "The project's outcomes (empty) and the carrying rules.", installs_to: "<workspace>/DELIVERY-RULES.yaml"}
+  - {path: templates/TASKS.md, purpose: "A starter task file with one example task.", installs_to: "<workspace>/TASKS.md"}
+  - {path: templates/DECISIONS.md, purpose: "An empty decisions file.", installs_to: "<workspace>/DECISIONS.md"}
+  - {path: templates/RUN-ORDER.md, purpose: "A starter queue file.", installs_to: "<workspace>/RUN-ORDER.md"}
+  - {path: templates/pre-commit, purpose: "The git hook that runs the commit checks inside a runner session.", installs_to: "<repo>/.git/hooks/pre-commit in each code repository and the repository holding the workspace, only where no hook exists"}
+  - {path: templates/deploy.sh, purpose: "A deploy skeleton: LIVE only after the running process is verified. Has a check mode.", installs_to: "<workspace>/deploy.sh, only with runner-init --deploy"}
+  - {path: schema/runner.conf.schema.json, purpose: "Every key of runner.conf, as a JSON Schema of a documented key list.", installs_to: "stays in the kit"}
+  - {path: schema/task-heading.json, purpose: "A regular expression and examples for a valid task heading.", installs_to: "stays in the kit"}
+  - {path: selftest/run.sh, purpose: "The self-test.", installs_to: "stays in the kit; works in a temporary directory"}
+
+install:
+  - step: 1
+    what: "Check the machine. Stop if any line starts MISSING."
+    command: "<kit>/bin/runner-doctor"
+  - step: 2
+    what: "Create the workspace directory if it does not exist. It must be inside a git repository."
+    command: "mkdir -p <workspace>"
+  - step: 3
+    what: "Copy the templates, write runner.conf and install the hooks. Add --deploy only if the answer to question 'deploy' is yes. If it prints a line to add to an existing hook or .gitignore, show the owner that line and add it only on the owner's yes."
+    command: "<kit>/bin/runner-init [--deploy] <workspace> <repo> [<repo> ...]"
+  - step: 4
+    what: "Fill <workspace>/runner.conf from the interview answers, by editing the KEY=value lines in place (rules at the top of the file; keys in schema/runner.conf.schema.json). At least: PROJECT, PRODUCT_DIRS, FREE_DIRS, NOTIFY, an ADAPTER and a MODEL for each letter in use, DEFAULT_BUILDER, DEFAULT_REVIEWER, SUPERVISOR, DEPLOYS and LIVE_CHECK_CMD."
+    command: null
+  - step: 5
+    what: "Put the owner's outcomes in <workspace>/DELIVERY-RULES.yaml: replace 'goal_outcomes: []' with a list of '- id: G1' / 'outcome: \"...\"' entries, and set meta.written to today's date."
+    command: null
+  - step: 6
+    what: "Check the settings. Stop if any line starts MISSING."
+    command: "<kit>/bin/runner-doctor <workspace>/runner.conf"
+  - step: 7
+    what: "Run the self-test (below) and show its output."
+    command: "<kit>/selftest/run.sh --conf <workspace>/runner.conf"
+  - step: 8
+    what: "Only after the self-test passes, and only on the owner's yes: write the pointer line of question 'protocol_scope' into the instruction file it names."
+    command: null
+  - step: 9
+    what: "Commit the new workspace files in the repository that holds them, naming each path, if the owner wants them committed."
+    command: null
+
+selftest:
+  command: "<kit>/selftest/run.sh --conf <workspace>/runner.conf"
+  other_forms:
+    - "<kit>/selftest/run.sh --adapter <adapter> --model <model id> [--effort medium] [--notify none|desktop|command]"
+    - "<kit>/selftest/run.sh --no-agent"
+  what_it_does: "Builds a toy code repository and a toy workspace in a temporary directory, initialises them with the kit and proves four facts. Line (b) starts one real agent session with the default builder. Nothing outside the temporary directory is changed. Details are in selftest.log there; the path is printed on standard error."
+  expected_output:
+    - "PASS (a) a dry queue pass picks the first task"
+    - "PASS (b) the default builder ran a task to a commit whose subject starts with the task id, and the heading is marked [x]"
+    - "PASS (c) the commit check refused a staged new file that the task does not name"
+    - "PASS (d) the configured notifier delivered a message"
+    - "SELFTEST: PASS"
+  with_no_agent:
+    note: "Line (b) is replaced by a SKIP line and the last line is PARTIAL. PARTIAL is not a pass."
+    expected_output:
+      - "PASS (a) a dry queue pass picks the first task"
+      - "SKIP (b) no agent session was started (--no-agent); a real task run is not proven"
+      - "PASS (c) the commit check refused a staged new file that the task does not name"
+      - "PASS (d) the configured notifier delivered a message"
+      - "SELFTEST: PARTIAL"
+  exit_codes: {"0": "SELFTEST: PASS", "1": "SELFTEST: FAIL", "2": "SELFTEST: PARTIAL, or a usage error before any line is printed"}
+  on_failure: "A failed fact prints a line starting FAIL with the reason, and the last line is SELFTEST: FAIL. Do not report the install as working."
+
+after_install:
+  - "Write <workspace>/DESIGN.md with the owner: what is being built and why."
+  - "Write the first tasks in <workspace>/TASKS.md (PROTOCOL.md section 4) and their ids in <workspace>/RUN-ORDER.md; delete the example task."
+  - "If the project deploys, write the PROJECT section of <workspace>/deploy.sh and run '<workspace>/deploy.sh check'."
+  - "Dry pass, from the workspace: QUEUE_DRY=1 QUEUE_ONCE=1 <kit>/bin/run_queue.sh"
+  - "Start the queue, from the workspace: tmux new -d -s <project>-runner <kit>/bin/run_queue.sh"
+  - "Watch: <kit>/bin/runner-queue   Stop after the current task: touch <workspace>/runs/queue.stop"
+
+adapters:
+  claude:
+    file: adapters/claude.sh
+    agent: "Claude Code"
+    status: proven
+    actually_run:
+      - "The self-test, in full, on macOS with a mid-tier model at medium effort: SELFTEST: PASS. Line (b) ran one task through run_task.sh in one attempt: one reviewer subagent, a commit in the code repository with the task id first, a second commit marking the heading [x] in the workspace repository, the hook active in both, exit 0."
+      - "One real task through run_queue.sh (one pass, not dry) in a project whose workspace is a directory inside its one code repository, with a task id above 9 before the dot and the desktop notifier: done in one attempt, exit 0."
+      - "With the machine's own agent settings left out, a session started with the adapter's flags ran a shell command only when CLAUDE_ALLOWED_TOOLS named Bash, and was denied without it."
+    not_run:
+      - "Resuming a session (adapter_resume)."
+      - "A stop session started by run_queue.sh, and its verdicts."
+      - "A failed sign-in, a network or overload error and a usage limit: the handling is carried over from the toolkit this kit was made from and was not triggered here."
+      - "CLAUDE_MIN_VERSION, and a narrowed CLAUDE_ALLOWED_TOOLS."
+      - "An API key in place of the command-line tool's own sign-in. The adapter unsets the API key variables for its sessions."
+  codex:
+    file: adapters/codex.sh
+    agent: "Codex"
+    status: experimental
+    actually_run:
+      - "Nothing has been run through adapters/codex.sh as it stands in this kit, beyond a syntax check and the signed-in check."
+      - "Before the adapters were split into their own files, the same commands ran one toy task through run_task.sh to a commit in one attempt (review run, task id first, heading marked [x], exit 0), and a resume with the same settings was shown by hand."
+    known_limits:
+      - "Its review step can be refused by Codex's own approval reviewer: the review command cannot start inside the sandbox, the session asks to run it outside, and the automatic approval review decides. It was allowed twice and refused once in three tries. On a refusal the session ends RUNNER: blocked, which costs a stop session."
+      - "Resume through the runner is untested."
+      - "Failure handling is untested: an expired sign-in and a network error are recognised only as far as a turn.failed event says, and there is no wait for a Codex usage limit."
+      - "A stop session on the codex adapter is untested."
+      - "The model id must be one the signed-in account may use; an id the account may not use is refused when the session starts."
+      - "A small task can use a large number of input tokens."
+  TEMPLATE:
+    file: adapters/TEMPLATE.sh
+    agent: "none; the contract for adding one"
+    status: untested
+    actually_run: ["A syntax check only."]
+
+status:
+  proven:
+    - "zsh -n on every zsh script and python3 -m py_compile on both Python files pass."
+    - "The self-test passes with the claude adapter, and prints PARTIAL with --no-agent."
+    - "runner-init writes the files and hooks and keeps every file that exists."
+    - "The commit check refuses an unnamed new file, a second task heading in one commit, an id with a second suffix and an unsigned start condition, and accepts the same change with a decision signed (owner, <date>). The prerequisite check stops a task whose Needs task is not done. Task ids above 9 before the dot are read."
+    - "Notifiers: none; command, with a command that succeeded and one that failed; desktop through osascript on macOS, and its log fallback when no notice tool is found."
+    - "The deploy.sh skeleton, with stand-in commands on one machine: unfilled it prints NOT LIVE; filled it prints LIVE and writes runs/live-sha; when the process was not restarted it prints NOT LIVE and leaves runs/live-sha unchanged."
+  experimental:
+    - "The codex adapter (see adapters.codex)."
+  untested:
+    - "Linux, and any macOS shell setup where zsh is not on the PATH."
+    - "notify-send on Linux."
+    - "The queue beyond one pass with one task: a stop session, parking, release by a decision, the stop file and the lock."
+    - "Resuming any session, and every failure path of run_task.sh."
+    - "More than one code repository."
+    - "The pre-flight command, the registry file and the live-switch check."
+    - "deploy.sh against a real host."
+    - "A repository with core.hooksPath set: runner-init prints a warning and the line to add, and installs nothing there."
+    - "INSTALL-PROMPT.md followed end to end by a fresh agent on another machine."

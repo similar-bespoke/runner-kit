@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runner checks (DELIVERY-RULES.yaml). Acts only inside a runner task or
+# stop session, which sets RUNNER_TASK_ID and RUNNER_CONF; every other commit passes.
+[ -n "${RUNNER_TASK_ID:-}" ] || exit 0
+exec python3 "<RUNNER>/runner_checks.py" staged "$RUNNER_TASK_ID" "$(git rev-parse --show-toplevel)"

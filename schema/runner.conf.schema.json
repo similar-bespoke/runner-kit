@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "runner.conf",
+  "description": "The keys of a project's runner.conf. The file itself is not JSON: it is one KEY=value per line, sourced by zsh and read by Python, so there are no spaces round the =, no comment after a value, and single quotes round any value holding spaces or symbols. Lists are words separated by spaces. This schema describes the keys as if the file were one JSON object of strings. Lines starting # are comments.",
+  "type": "object",
+  "required": ["PROJECT", "WORKSPACE", "REPOS", "DEFAULT_BUILDER", "SUPERVISOR"],
+  "additionalProperties": false,
+  "properties": {
+    "PROJECT": {"type": "string", "minLength": 1, "description": "The project's name, as the prompts and notices say it."},
+    "WORKSPACE": {"type": "string", "pattern": "^/", "description": "Absolute path of the workspace directory. It must be inside a git repository."},
+    "REPOS": {"type": "string", "minLength": 1, "description": "Absolute paths of the code repositories, separated by spaces. A session starts in the first."},
+    "PRODUCT_DIRS": {"type": "string", "description": "Caller check: directories (from the repository root, each ending in /) where a new Python function must have a caller. Empty switches the check off.", "default": "src/"},
+    "FREE_DIRS": {"type": "string", "description": "New-file check: directories whose new files need not be named in the task. The workspace's runs/ is always free.", "default": "tests/"},
+    "REGISTRY_FILE": {"type": "string", "description": "Optional. A file that registers functions by name; a function listed there counts as called.", "default": ""},
+    "LIVE_FLAG_PATTERN": {"type": "string", "description": "Optional. Python regular expression for a line that switches a live write on.", "default": ""},
+    "LIVE_FLAG_FILE": {"type": "string", "description": "Optional. The file (path suffix) LIVE_FLAG_PATTERN is looked for in.", "default": ""},
+    "NOTIFY": {"enum": ["none", "desktop", "command"], "description": "How the owner is told: none writes runs/notify.log only; desktop shows a desktop notice; command runs NOTIFY_CMD.", "default": "none"},
+    "NOTIFY_CMD": {"type": "string", "description": "For NOTIFY=command: a command that receives the message as its one, last argument.", "default": ""},
+    "PREFLIGHT_CMD": {"type": "string", "description": "Optional. A command run before each task; a failure is a warning only.", "default": ""},
+    "DEFAULT_BUILDER": {"type": "string", "pattern": "^[A-Z]$", "description": "The letter a new task's M column gets by default. The self-test runs its real task with this letter.", "default": "S"},
+    "DEFAULT_EFFORT": {"type": "string", "pattern": "^[a-z]+$", "description": "The effort word a new task gets by default.", "default": "medium"},
+    "DEFAULT_REVIEWER": {"type": "string", "pattern": "^([A-Z] [a-z]+|owner)$", "description": "The R column a new task gets by default: a letter and an effort, or owner.", "default": "O high"},
+    "SUPERVISOR": {"type": "string", "pattern": "^[A-Z]$", "description": "The letter whose adapter and model run a stop session.", "default": "O"},
+    "CLAUDE_ALLOWED_TOOLS": {"type": "string", "description": "Claude adapter: tools an unattended session may use without asking, as words. Empty relies on the machine's own Claude Code settings.", "default": "Bash"},
+    "CLAUDE_MIN_VERSION": {"type": "string", "pattern": "^([0-9]+\\.[0-9]+\\.[0-9]+)?$", "description": "Claude adapter: optional minimum command-line version.", "default": ""},
+    "DEPLOYS": {"enum": ["yes", "no"], "description": "Whether the project deploys. yes needs a deploy.sh in the workspace.", "default": "no"},
+    "LIVE_CHECK_CMD": {"type": "string", "description": "The command that proves what is live: it prints the commit the running system reports as the first word of its output. Used by deploy.sh.", "default": ""}
+  },
+  "patternProperties": {
+    "^ADAPTER_[A-Z]$": {"type": "string", "pattern": "^[a-z0-9_-]*$", "description": "The adapter for a letter: the name of a file in the kit's adapters/ directory, without .sh."},
+    "^MODEL_[A-Z]$": {"type": "string", "description": "The exact model id for a letter, as that agent's command-line tool takes it. Pin an id, not an alias. Empty makes the letter unusable."}
+  }
+}

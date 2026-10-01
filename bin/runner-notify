@@ -1,0 +1,19 @@
+#!/usr/bin/env zsh
+# Send one short message to the owner through the notifier named by NOTIFY in
+# runner.conf: none (log only), desktop, or command (NOTIFY_CMD).
+#   runner-notify <message>
+# Every notifier writes one line to runs/notify.log saying which route it took.
+# Settings: the file named by RUNNER_CONF, or runner.conf in the current directory.
+set -u
+[ $# -eq 1 ] || { print "usage: runner-notify <message>" >&2; exit 2; }
+BIN="${0:A:h}"; KIT="${BIN:h}"
+CONF="${RUNNER_CONF:-$PWD/runner.conf}"
+[ -f "$CONF" ] || { print "no settings file: set RUNNER_CONF or start from the directory that holds runner.conf" >&2; exit 2; }
+source "${CONF:A}"
+NAME="${NOTIFY:-none}"
+[ -f "$KIT/notify/$NAME.sh" ] || { print "unknown NOTIFY=$NAME; using none" >&2; NAME=none; }
+mkdir -p "${WORKSPACE:A}/runs"
+export RUNNER_NOTIFY_LOG="${WORKSPACE:A}/runs/notify.log"
+export RUNNER_NOTIFY_TITLE="${PROJECT:-runner}"
+export NOTIFY_CMD="${NOTIFY_CMD:-}"
+exec zsh "$KIT/notify/$NAME.sh" "$1"

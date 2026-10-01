@@ -1,0 +1,33 @@
+meta:
+  written: <date>
+  how_to_use: "Read this whole file before starting any task. A rule never overrides a decision signed '(owner, <date>)' in DECISIONS.md. Add a rule only when a failure is observed, and record the failure with it."
+  source: "<KIT>/PROTOCOL.md section 12 and <KIT>/rules.yaml."
+
+goal_outcomes: []         # the project's numbered outcomes: - id: G1 / outcome: "..."
+
+rules:
+  - id: R01
+    rule: "Every task names an outcome the user gets. Work that serves none is parked."
+  - id: R02
+    rule: "A task comes from an observed failure or the owner's order, never from a reviewer's suggestion."
+    enforced_by: "runner_checks.py (new task), at commit: at most one new task per commit, no second suffix"
+  - id: R03
+    rule: "Measure a new model question on stored cases before any product code."
+  - id: R04
+    rule: "No function without a caller, no file the task does not name, no machinery for a failure nobody has seen."
+    enforced_by: "runner_checks.py (caller, new file), at commit"
+  - id: R05
+    rule: "One reviewer per task, on the diff only."
+  - id: R06
+    rule: "A question for the owner is asked once and waits; engineering is not the owner's to answer."
+    enforced_by: "run_queue.sh: a parked task runs again only when the owner appends to DECISIONS.md"
+  - id: R07
+    rule: "A supervising session writes no product code."
+  - id: R08
+    rule: "Deploy early and often; ten built changes not live is a stop."
+  - id: R09
+    rule: "Live is what the deploy check says, then what the first live result shows against its source."
+  - id: R10
+    rule: "Progress is something the owner can open."
+  - id: R11
+    rule: "No approval steps or pass marks the owner did not ask for. Delegated models decide visibly and reversibly."
