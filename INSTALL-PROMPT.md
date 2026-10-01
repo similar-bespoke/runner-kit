@@ -6,7 +6,7 @@ Paste everything below the line into your coding agent, started in the project y
 
 Install the runner kit for this project. Follow these steps in order.
 
-1. Get the kit. If `~/runner-kit` exists, use it. Otherwise run `git clone REPLACE-WITH-REPOSITORY-URL ~/runner-kit`. If I named another place for the kit, use that instead.
+1. Get the kit. If `~/runner-kit` exists, use it. Otherwise run `git clone https://github.com/similar-bespoke/runner-kit ~/runner-kit`. If I named another place for the kit, use that instead.
 2. Before acting, read three files in the kit in full: `manifest.yaml`, `interview.yaml` and `PROTOCOL.md`.
 3. Find out what you can without asking me. Run the kit's `bin/runner-doctor` and show me its output. Then work through the `detect` steps of each question in `interview.yaml`.
 4. Ask me only the questions in `interview.yaml` that you could not answer yourself. Ask one at a time, each with your recommended answer. Show me what you detected for the others in one short list and let me correct it.
