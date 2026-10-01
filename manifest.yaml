@@ -35,6 +35,7 @@ files:
   - {path: manifest.yaml, purpose: "This index.", installs_to: "stays in the kit"}
   - {path: interview.yaml, purpose: "The questions an installing agent asks, and how to answer them without asking.", installs_to: "stays in the kit"}
   - {path: rules.yaml, purpose: "The carrying rules, with where each is checked and whether code enforces it.", installs_to: "stays in the kit"}
+  - {path: docs/before-after.svg, purpose: "The chart shown in README.md.", installs_to: "stays in the kit"}
   - {path: .gitignore, purpose: "Keeps runs/ and temporary files out of the kit's git history.", installs_to: "stays in the kit"}
   - {path: LICENSE, purpose: "The GNU General Public License, version 3.", installs_to: "stays in the kit"}
   - {path: bin/run_queue.sh, purpose: "Walks the queue, one task at a time; starts a stop session when a task stops.", installs_to: "stays in the kit; run from the workspace"}

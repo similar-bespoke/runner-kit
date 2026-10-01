@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" width="720" height="300" role="img" aria-labelledby="t d" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<title id="t">Commits before the runner and with it</title>
+<desc id="d">Share of commits in one private project. Repairs of earlier work: 33 percent before, 3 percent with the runner. Paperwork only: 24 percent before, 1 percent with. Tied to a written task: 0 percent before, 99 percent with.</desc>
+<rect width="720" height="300" rx="8" fill="#fcfcfb"/>
+<text x="24" y="34" font-size="16" font-weight="600" fill="#0b0b0b">Share of commits, before the runner and with it</text>
+<text x="24" y="54" font-size="12" fill="#52514e">One private project. Before: 1,858 commits over six months. With the runner: 96 commits over four days.</text>
+<rect x="24" y="70" width="12" height="12" rx="2" fill="#8a8983"/><text x="42" y="80" font-size="12" fill="#52514e">Before the runner</text>
+<rect x="160" y="70" width="12" height="12" rx="2" fill="#2a78d6"/><text x="178" y="80" font-size="12" fill="#52514e">With the runner</text>
+<line x1="270" y1="100" x2="270" y2="262" stroke="#e4e3df" stroke-width="1"/>
+<text x="270" y="280" font-size="11" fill="#52514e" text-anchor="middle">0%</text>
+<line x1="360" y1="100" x2="360" y2="262" stroke="#e4e3df" stroke-width="1"/>
+<text x="360" y="280" font-size="11" fill="#52514e" text-anchor="middle">25%</text>
+<line x1="450" y1="100" x2="450" y2="262" stroke="#e4e3df" stroke-width="1"/>
+<text x="450" y="280" font-size="11" fill="#52514e" text-anchor="middle">50%</text>
+<line x1="540" y1="100" x2="540" y2="262" stroke="#e4e3df" stroke-width="1"/>
+<text x="540" y="280" font-size="11" fill="#52514e" text-anchor="middle">75%</text>
+<line x1="630" y1="100" x2="630" y2="262" stroke="#e4e3df" stroke-width="1"/>
+<text x="630" y="280" font-size="11" fill="#52514e" text-anchor="middle">100%</text>
+<text x="258" y="133" font-size="13" fill="#0b0b0b" text-anchor="end">Commits that repair earlier work</text>
+<path d="M270,112 h114.8 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-114.8 z" fill="#8a8983"/>
+<text x="394.8" y="124" font-size="12" fill="#0b0b0b">33%</text>
+<path d="M270,130 h6.8 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-6.8 z" fill="#2a78d6"/>
+<text x="286.8" y="142" font-size="12" fill="#0b0b0b">3%</text>
+<text x="258" y="183" font-size="13" fill="#0b0b0b" text-anchor="end">Commits that are paperwork only</text>
+<path d="M270,162 h82.4 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-82.4 z" fill="#8a8983"/>
+<text x="362.4" y="174" font-size="12" fill="#0b0b0b">24%</text>
+<rect x="270" y="180" width="3.6" height="16" fill="#2a78d6"/>
+<text x="279.6" y="192" font-size="12" fill="#0b0b0b">1%</text>
+<text x="258" y="233" font-size="13" fill="#0b0b0b" text-anchor="end">Commits tied to a written task</text>
+<rect x="270" y="212" width="2.0" height="16" fill="#8a8983"/>
+<text x="278.0" y="224" font-size="12" fill="#0b0b0b">0%</text>
+<path d="M270,230 h352.4 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-352.4 z" fill="#2a78d6"/>
+<text x="632.4" y="242" font-size="12" fill="#0b0b0b">99%</text>
+</svg>

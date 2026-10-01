@@ -2,6 +2,32 @@
 
 A protocol for setting up a powerful coding agent runner infrastructure that reduces token usage and ensures output quality across multi-sessions. It runs off one coordinating task and can be used with any coding agent to work through a written list of tasks, unattended, one fresh session per task, with the rules that matter enforced by code at commit time.
 
+## Why this exists
+
+The kit came out of one private project. For six months the project was built in long coding sessions, each asked to carry a plan of several phases from start to finish. The git history of that period, 1,858 commits, shows what that produced:
+
+- About one commit in three (33%) repaired earlier work. Its subject line used a word such as fix, repair, revert or restore.
+- About one in four (24%) changed no code at all: plans, coordination notes and evidence files written by sessions about their own work.
+- No commit named a written task. There was no list to check a commit against.
+- One commit in six (16%) changed more than 500 lines.
+
+The runner replaced those sessions with a written queue of small tasks, one fresh session per task, and rules checked by code when a session commits. In the first four days with the rules enforced (96 commits):
+
+- 3% of commits repaired earlier work, and 1% were paperwork only.
+- 99% began with the id of the task they delivered.
+- 97 tasks were run. 88% of queue runs ended in a finished task, and a task took 1.16 sessions on average. The median finished task took about 15 minutes.
+
+![Share of commits before the runner and with it: repairs 33% then 3%, paperwork only 24% then 1%, tied to a written task 0% then 99%](docs/before-after.svg)
+
+The rules mattered as much as the queue. The runner first ran for six days with its rules written down but not enforced. In that week 17% of queue runs ended in a finished task, and a task took 2.61 sessions on average. Once a commit hook enforced the rules, 88% of runs ended in a finished task.
+
+How to read these numbers:
+
+- They come from one project and one owner, and the runner period is four days. Treat them as a record of what happened, not a benchmark.
+- "Repaired earlier work" is counted from words in commit subjects. It misses repairs described another way and counts some new work that mentions a fix.
+- Token use before the runner was not measured, so this page makes no claim about tokens saved. With the runner, the median task used about 7.5 million tokens, most of them cached re-reads of the same context.
+- The two periods differ in more than the runner: the work itself changed, and so did the models.
+
 ## What it is
 
 - **A protocol** (`PROTOCOL.md`): who does what, how a task is written, how the queue runs, what happens when a task stops, and when something counts as live.
