@@ -5,7 +5,7 @@
 kit:
   name: runner-kit
   version: 0.1.0
-  licence: MIT
+  licence: GPL-3.0
   summary: "A task runner for coding agents: a written queue of small tasks, one fresh unattended session per task, rules enforced by code at commit time."
 
 requirements:
@@ -36,7 +36,7 @@ files:
   - {path: interview.yaml, purpose: "The questions an installing agent asks, and how to answer them without asking.", installs_to: "stays in the kit"}
   - {path: rules.yaml, purpose: "The carrying rules, with where each is checked and whether code enforces it.", installs_to: "stays in the kit"}
   - {path: .gitignore, purpose: "Keeps runs/ and temporary files out of the kit's git history.", installs_to: "stays in the kit"}
-  - {path: LICENSE, purpose: "The MIT licence.", installs_to: "stays in the kit"}
+  - {path: LICENSE, purpose: "The GNU General Public License, version 3.", installs_to: "stays in the kit"}
   - {path: bin/run_queue.sh, purpose: "Walks the queue, one task at a time; starts a stop session when a task stops.", installs_to: "stays in the kit; run from the workspace"}
   - {path: bin/run_task.sh, purpose: "Runs one task to its commit, retrying and resuming.", installs_to: "stays in the kit; run from the workspace"}
   - {path: bin/runner_checks.py, purpose: "The commit checks and the prerequisite check.", installs_to: "stays in the kit; called by the pre-commit hook and by run_task.sh"}
