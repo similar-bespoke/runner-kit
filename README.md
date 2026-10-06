@@ -96,7 +96,7 @@ Five things to know before you use it:
 
 The dashboard takes a report of up to 2 MB as sent and 4 MB unpacked, holding at most 20,000 values, and has at most 64 callers in hand at once. A caller that keeps it waiting gives up its place when all are taken, so callers that connect and say nothing cannot shut the others out. A sender it refuses is told why. It is a small program for a network you trust: against a flood of real requests it has no defence, and a network you do not trust wants a proxy in front of it that is made for that.
 
-`dashboard/service-macos.sh` keeps the dashboard running on a Mac. `selftest/dashboard.py` proves fifty-four facts about the dashboard and the reporter on one machine, spending nothing: what one runner, one page or one stranger must not be able to do to the others. Nineteen things those facts rest on were each taken out of a copy of the kit, and each time the facts that prove it failed.
+`dashboard/service-macos.sh` keeps the dashboard running on a Mac. `selftest/dashboard.py` proves fifty-five facts about the dashboard and the reporter on one machine, spending nothing: what one runner, one page or one stranger must not be able to do to the others. Nineteen things most of those facts rest on were each taken out of a copy of the kit, and each time the facts that prove it failed.
 
 ## What is proven and what is not
 

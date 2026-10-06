@@ -215,6 +215,8 @@
   .pill.teal { color: var(--teal); background: var(--teal-light); border-color: var(--teal); }
   .pill.amber { color: var(--amber); background: var(--amber-light); border-color: var(--amber); }
   .pill.bad { color: var(--bad); background: var(--bad-light); border-color: var(--bad); }
+  .hidden-bar { margin-top: 14px; }
+  .hidden-bar a { font-weight: 600; }
   .icon { border: 1px solid var(--warm); background: var(--cream); color: var(--ink3); border-radius: var(--radius); width: 28px; height: 26px; cursor: pointer; font-size: .8rem; line-height: 1; transition: color .2s, border-color .2s; }
   .icon:hover { color: var(--teal); border-color: var(--teal); }
 
@@ -425,6 +427,7 @@
   <p class="lede" id="work-lede">One pane for each runner. A new runner gets its pane the moment it reports.</p>
   <div class="panes" id="panes"></div>
   <p class="empty" id="none" hidden>No runner is at work.</p>
+  <p class="lede hidden-bar" id="hidden-bar" hidden></p>
 
   <div id="rest-wrap" hidden>
     <div class="section-rule"><span>Finished or silent</span></div>
@@ -449,6 +452,7 @@
       <tr><td><span class="kbd">f</span></td><td>Fill the screen with the first pane, or put it back</td></tr>
       <tr><td><span class="kbd">t</span></td><td>Open the task list of the pane in view</td></tr>
       <tr><td><span class="kbd">d</span></td><td>Switch between the light and the dark sheet</td></tr>
+      <tr><td>&times; on a pane</td><td>Hide that runner on this device. It comes back by itself when it starts work or has a question for you</td></tr>
       <tr><td>&#9998; by a name</td><td>Give that runner a name of your own, kept for every device</td></tr>
       <tr><td>An identifier</td><td>Click it to copy the command that opens that agent session again</td></tr>
       <tr><td><span class="kbd">Esc</span></td><td>Close whatever is open</td></tr>
@@ -490,7 +494,16 @@ const TO_REST = 600;         // seconds before a silent or stopped runner moves 
 const KEEP_LINES = 1500;     // lines kept in one pane's output
 const pad = (n) => String(n).padStart(2, '0');
 
-const STATE = { models: new Map(), offset: 0, lastOk: 0, failing: '', up: 0, version: '', focus: null, sheet: null, wire: [], wireAt: 0, pinned: new Set(LS.get('pinned', [])), first: true };
+// What this device has hidden: runner id -> what the runner was doing when it was hidden. Kept in this browser only.
+function hiddenFromStore() {
+  const saved = LS.get('hidden', {}), out = Object.create(null);
+  if (saved && typeof saved === 'object' && !Array.isArray(saved)) for (const [id, k] of Object.entries(saved)) if (typeof k === 'string') out[id] = k;
+  return out;
+}
+// A hidden runner comes back by itself when it turns to something that needs a look: it starts work, falls asleep,
+// has a question for the owner, is paused or cannot be read. It does not come back for going quiet or stopping.
+const COMES_BACK = new Set(['running', 'deciding', 'asleep', 'waiting', 'paused', 'fault']);
+const STATE = { models: new Map(), offset: 0, lastOk: 0, failing: '', up: 0, version: '', focus: null, sheet: null, wire: [], wireAt: 0, pinned: new Set(LS.get('pinned', [])), hidden: hiddenFromStore(), first: true };
 const now = () => Date.now() / 1000 + STATE.offset;        // the dashboard's clock, in seconds
 
 // ---- how things are said
@@ -717,6 +730,7 @@ function makePane(m) {
         h('button', { class: 'p-edit', type: 'button', title: 'Give this runner a name of your own', 'aria-label': 'Give this runner a name of your own', on: { click: () => rename(m) } }, '✎')),
       h('div', { class: 'p-side' },
         r.pill = h('span', { class: 'pill' }, h('span', { class: 'dot' }), r.pillText = h('span')),
+        r.hide = h('button', { class: 'icon', type: 'button', title: 'Hide this pane on this device. It comes back by itself if the runner starts work or has a question for you.', 'aria-label': 'Hide this pane on this device', on: { click: () => hide(m) } }, '\u00d7'),
         r.focus = h('button', { class: 'icon', type: 'button', title: 'Fill the screen with this pane', 'aria-label': 'Fill the screen with this pane', on: { click: () => focus(STATE.focus === m.id ? null : m.id) } }, '\u2922'))),
     h('div', { class: 'p-under' }, r.sess = h('div', { class: 'p-sess' }), r.meta = h('div', { class: 'p-meta' })),
     h('div', { class: 'p-hand' }, arc,
@@ -995,8 +1009,18 @@ function fleet() {
 // ---- where each runner sits: a pane while it works, a row below once it has stopped or gone quiet
 function place() {
   const panes = $('panes'), rest = $('rest');
-  let shown = 0, below = 0;
+  let shown = 0, below = 0, hidden = 0;
   for (const m of STATE.models.values()) try {
+    if (m.id in STATE.hidden) {
+      const k = status(m.data, ageOf(m)).k;
+      if (k !== STATE.hidden[m.id] && COMES_BACK.has(k)) unhide(m.id, true);
+      else if (STATE.focus !== m.id) {
+        hidden++;
+        if (m.el && m.el.isConnected) m.el.remove();
+        if (m.row) { m.row.remove(); m.row = null; }
+        continue;
+      }
+    }
     const age = ageOf(m), quiet = (m.data.state === 'stopped' || age > SILENT) && age > TO_REST && !STATE.pinned.has(m.id) && STATE.focus !== m.id;
     if (!quiet) {
       shown++;
@@ -1013,7 +1037,7 @@ function place() {
         m.row = h('div', { class: 'item' },
           h('div', { class: 'item-head' }, m.rowName = h('div', { class: 'item-title' }), h('div', { class: 'item-tags' }, h('span', { class: 'tag' }, d.state === 'stopped' ? 'stopped' : 'silent'), h('span', { class: 'tag' }, info.host || ''))),
           m.rowWhy = h('div', { class: 'item-why' }),
-          h('div', { class: 'item-meta' }, h('a', { on: { click: () => openTasks(m.id) } }, 'Task list \u2192'), '   ', h('a', { on: { click: () => { STATE.pinned.add(m.id); LS.set('pinned', [...STATE.pinned]); place(); } } }, 'Show its pane')));
+          h('div', { class: 'item-meta' }, h('a', { on: { click: () => openTasks(m.id) } }, 'Task list \u2192'), '   ', h('a', { on: { click: () => { STATE.pinned.add(m.id); LS.set('pinned', [...STATE.pinned]); place(); } } }, 'Show its pane'), '   ', h('a', { on: { click: () => hide(m) } }, 'Hide')));
         rest.append(m.row);
       }
       m.rowName.textContent = label(m);
@@ -1021,8 +1045,32 @@ function place() {
     }
   } catch (e) { console.error('The runner ' + m.id + ' could not be placed.', e); }
   $('rest-wrap').hidden = !below;
-  $('none').hidden = shown > 0;
+  $('none').hidden = shown > 0 || below > 0;
+  $('none').textContent = hidden ? 'Every runner here is hidden on this device.' : 'No runner is at work.';
   $('work-lede').hidden = shown === 0;
+  const bar = $('hidden-bar');
+  bar.hidden = !hidden;
+  if (hidden && bar.dataset.n !== String(hidden)) {
+    bar.dataset.n = String(hidden);
+    bar.textContent = '';
+    bar.append(`${hidden} hidden on this device. `, h('a', { href: '#', on: { click: (e) => { e.preventDefault(); unhide(null); } } }, 'Show them again'), '.');
+  }
+}
+
+function hide(m) {
+  const k = status(m.data, ageOf(m)).k;
+  STATE.hidden[m.id] = k === 'lost' ? 'idle' : k;
+  const ids = Object.keys(STATE.hidden);
+  for (const id of ids.slice(0, Math.max(0, ids.length - 200))) delete STATE.hidden[id];
+  LS.set('hidden', STATE.hidden);
+  if (STATE.focus === m.id) focus(null);
+  place();
+}
+// One runner, or with no id every one. `quietly` is for a runner that came back by itself.
+function unhide(id, quietly) {
+  if (id) { delete STATE.hidden[id]; } else for (const k of Object.keys(STATE.hidden)) delete STATE.hidden[k];
+  LS.set('hidden', STATE.hidden);
+  if (!quietly) place();
 }
 
 // A pane is as tall as what is left of the first screen below the figures, so one row of runners fills a display.

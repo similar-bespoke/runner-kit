@@ -313,6 +313,15 @@ def agent_of(conf, letter, builder=""):
     return adapter or ("claude" if "claude" in low else "codex" if "codex" in low else "")
 
 
+def agent_in(text):
+    """The agent a session log was written by, from the lines the runner writes for what the agent said
+    ("claude: ..." or "codex: ..."); empty when the log says none. For a workspace whose settings are not known."""
+    for name in AGENTS:
+        if re.search(r"(?m)^" + name + r": ", text):
+            return name
+    return ""
+
+
 def session_in_charge(place):
     """The supervising session that last said it is in charge of this runner (--in-charge), or None."""
     try:
@@ -576,7 +585,7 @@ class Reporter:
                     "id": q["stop_session"], "task": hand, "live": True}
         elif log and session_in(text):
             builder = first.group(1) if first else ""
-            work = {"kind": "task", "agent": agent_of(place.conf, by.get(log[2], {}).get("letter", ""), builder),
+            work = {"kind": "task", "agent": agent_of(place.conf, by.get(log[2], {}).get("letter", ""), builder) or agent_in(text),
                     "name": builder, "id": session_in(text), "task": log[2], "live": state == "running" and log[2] == hand}
 
         task = None
