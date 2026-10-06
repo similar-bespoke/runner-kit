@@ -1,0 +1,1280 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf8f3">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Runner Watch">
+<title>Runner Watch</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23faf8f3'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%232a6b6b' stroke-width='2' opacity='.45'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%232a6b6b'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&family=Libre+Franklin:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --parchment: #f5f0e8; --cream: #faf8f3; --warm: #ede6d8; --warmer: #e3d9c5;
+    --ink: #1a1714; --ink2: #3d3730; --ink3: #6b6259; --ink4: #9e9488; --ink5: #c4baad;
+    --rust: #b44d2a; --rust-light: rgba(180,77,42,.08);
+    --teal: #2a6b6b; --teal-deep: #1a4a4a; --teal-light: rgba(42,107,107,.08);
+    --gold: #8b7028; --gold-light: rgba(139,112,40,.10);
+    --green: #3a7d44; --green-light: rgba(58,125,68,.10);
+    --amber: #b87f1a; --amber-light: rgba(184,127,26,.10);
+    --bad: #a83232; --bad-light: rgba(168,50,50,.08);
+    --radius: 4px; --page: 2400px;
+    --shade: rgba(26,23,20,.5);
+    --serif: 'Fraunces', Georgia, serif;
+    --sans: 'Libre Franklin', system-ui, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  /* The dark sheet is a sibling, chosen with the button and never by the system's setting. */
+  [data-theme="dark"] {
+    --parchment: #1d1915; --cream: #14110d; --warm: #2c2620; --warmer: #3a3229;
+    --ink: #ece2cc; --ink2: #d4c9b3; --ink3: #a59a87; --ink4: #7b7163; --ink5: #564d42;
+    --rust: #d9774f; --rust-light: rgba(217,119,79,.12);
+    --teal: #63b3ad; --teal-deep: #3f8f8a; --teal-light: rgba(99,179,173,.12);
+    --gold: #c9a544; --gold-light: rgba(201,165,68,.12);
+    --green: #6fb47b; --green-light: rgba(111,180,123,.12);
+    --amber: #dba743; --amber-light: rgba(219,167,67,.13);
+    --bad: #de6f63; --bad-light: rgba(222,111,99,.12);
+    --shade: rgba(0,0,0,.62);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--cream); color: var(--ink);
+    font-family: var(--sans); font-weight: 400; line-height: 1.5;
+    min-height: 100vh; min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color .4s, color .4s;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0; opacity: .4; pointer-events: none; z-index: 9999;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
+  }
+  button { font: inherit; color: inherit; }
+  a { color: var(--teal); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---- masthead */
+  header {
+    position: relative; max-width: var(--page); margin: 0 auto;
+    padding: calc(26px + env(safe-area-inset-top)) max(32px, env(safe-area-inset-right)) 14px max(32px, env(safe-area-inset-left));
+    border-bottom: 3px double var(--ink);
+  }
+  header::after {  /* a light that travels the rule while any runner is at work */
+    content: ''; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; opacity: 0;
+    background: linear-gradient(90deg, transparent, var(--teal), transparent) no-repeat;
+    background-size: 18% 100%; background-position: -25% 0; transition: opacity .6s;
+  }
+  body.live header::after { opacity: .9; animation: scan 4.6s linear infinite; }
+  @keyframes scan { to { background-position: 125% 0; } }
+  .masthead { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px 18px; }
+  .mast-left { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; min-width: 0; }
+  h1 { font-family: var(--serif); font-size: clamp(2rem, 3.2vw, 2.8rem); font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  h1 em { font-style: italic; font-weight: 400; color: var(--teal); }
+  .crumbs { font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ink4); }
+  .crumbs a { color: var(--ink3); text-decoration: none; }
+  .crumbs a:hover { color: var(--rust); }
+  .mast-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #clock { font-size: .7rem; color: var(--ink4); letter-spacing: .08em; text-transform: uppercase; font-weight: 300; font-variant-numeric: tabular-nums; }
+  .conn { display: flex; align-items: center; gap: 6px; font-size: .7rem; color: var(--ink3); }
+  .conn .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink5); flex-shrink: 0; box-shadow: 0 0 0 2px var(--cream); }
+  .conn.fresh { color: var(--ink2); } .conn.fresh .dot { background: var(--green); animation: breathe 2.4s ease-in-out infinite; }
+  .conn.stale .dot { background: var(--amber); } .conn.error .dot { background: var(--bad); }
+  @keyframes breathe { 50% { opacity: .45; } }
+  .tool {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 30px; min-width: 30px;
+    border: 1px solid var(--warm); border-radius: var(--radius); padding: 5px 9px;
+    color: var(--ink3); background: var(--cream); font-size: .72rem; font-weight: 600; text-decoration: none;
+    cursor: pointer; transition: color .2s, border-color .2s, background-color .2s;
+  }
+  .tool:hover { color: var(--teal); border-color: var(--teal); }
+  .edition-line { margin-top: 8px; font-family: var(--serif); font-size: .88rem; font-style: italic; color: var(--ink3); }
+  .wire { margin-top: 9px; display: flex; gap: 10px; align-items: baseline; min-height: 1.25rem; font-size: .74rem; color: var(--ink2); }
+  .wire-k { font-size: .56rem; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: var(--rust); flex-shrink: 0; }
+  .wire-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .wire-t.in { animation: wire-in .6s cubic-bezier(.2,.8,.2,1); }
+  .wire-t time { color: var(--ink4); font-variant-numeric: tabular-nums; margin-right: 8px; }
+  @keyframes wire-in { from { opacity: 0; transform: translateY(7px); } }
+
+  /* ---- page furniture */
+  main { max-width: var(--page); margin: 0 auto; padding: 6px max(32px, env(safe-area-inset-right)) 40px max(32px, env(safe-area-inset-left)); }
+  .section-rule { display: flex; align-items: center; gap: 16px; margin: 20px 0 10px; }
+  .section-rule span { font-family: var(--serif); font-size: .7rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ink4); white-space: nowrap; }
+  .section-rule::before, .section-rule::after { content: ''; flex: 1; height: 1px; background: var(--ink4); opacity: .3; }
+  .lede { font-family: var(--serif); font-style: italic; font-size: .86rem; color: var(--ink3); max-width: 720px; margin: 0 0 12px; }
+  .empty { font-family: var(--serif); font-style: italic; color: var(--ink4); font-size: .95rem; padding: 26px 4px; }
+  .kicker { font-size: .56rem; letter-spacing: .18em; text-transform: uppercase; color: var(--ink4); font-weight: 500; }
+  .tag { display: inline-block; font-size: .56rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ink3); background: var(--cream); border: 1px solid var(--warmer); border-radius: 2px; padding: 1px 6px; white-space: nowrap; }
+  .tag.bad { color: var(--bad); background: var(--bad-light); border-color: var(--bad); }
+  .tag.amber { color: var(--amber); background: var(--amber-light); border-color: var(--amber); }
+  .tag.rust { color: var(--rust); background: var(--rust-light); border-color: var(--rust); }
+  .tag.fade { animation: fade-away 1.2s 9s forwards; }
+  @keyframes fade-away { to { opacity: 0; } }
+  footer { max-width: var(--page); margin: 0 auto; padding: 0 32px calc(26px + env(safe-area-inset-bottom)); text-align: center; font-size: .7rem; font-style: italic; color: var(--ink4); }
+  footer .stamp { display: block; margin-top: 4px; font-style: normal; font-size: .58rem; letter-spacing: .14em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+  footer .stamp.error { color: var(--bad); }
+
+  /* ---- the fleet at a glance */
+  .glance { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 26%); gap: 12px; align-items: stretch; }
+  .vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); background: var(--parchment); border: 1px solid var(--warm); border-top: 3px double var(--ink); border-radius: 0 0 var(--radius) var(--radius); }
+  .vital { padding: 12px 14px 11px; border-left: 3px solid var(--ink5); min-width: 0; }
+  .vital.teal { border-left-color: var(--teal); } .vital.green { border-left-color: var(--green); }
+  .vital.rust { border-left-color: var(--rust); } .vital.amber { border-left-color: var(--amber); }
+  .v-num { font-family: var(--serif); font-size: 1.7rem; font-weight: 600; line-height: 1.12; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .v-lab { margin-top: 4px; font-size: .58rem; letter-spacing: .16em; text-transform: uppercase; color: var(--ink4); }
+  .v-sub { margin-top: 2px; font-size: .7rem; color: var(--ink3); line-height: 1.4; overflow-wrap: anywhere; }
+  .roll { display: inline-block; height: 1.12em; line-height: 1.12; overflow: hidden; vertical-align: bottom; }
+  .roll > span { display: block; animation: roll-up .7s cubic-bezier(.2,.8,.2,1) forwards; }
+  @keyframes roll-up { to { transform: translateY(-50%); } }
+
+  .hours { background: var(--parchment); border: 1px solid var(--warm); border-top: 3px double var(--ink); border-radius: 0 0 var(--radius) var(--radius); padding: 10px 14px 8px; display: flex; flex-direction: column; min-width: 0; }
+  .hours-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .hours-h b { font-family: var(--serif); font-weight: 600; font-size: .95rem; font-variant-numeric: tabular-nums; }
+  .hours-bars { flex: 1; display: flex; align-items: flex-end; gap: 2px; min-height: 44px; margin-top: 6px; border-bottom: 1px solid var(--ink5); }
+  .hours-bars i { flex: 1 1 0; min-width: 1px; height: var(--h, 0%); background: var(--teal); opacity: .8; border-radius: 1px 1px 0 0; transition: height .9s cubic-bezier(.2,.8,.2,1); }
+  .hours-bars i.zero { height: 2px; background: var(--warmer); opacity: 1; }
+  .hours-bars i.now { opacity: 1; box-shadow: 0 -3px 0 var(--gold); }
+  .hours-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: .54rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ink4); font-variant-numeric: tabular-nums; }
+
+  /* ---- what waits for the owner */
+  .asks { display: grid; gap: 8px; }
+  .item { padding: 11px 16px; background: var(--parchment); border: 1px solid var(--warm); border-left: 3px solid var(--ink5); border-radius: var(--radius); min-width: 0; }
+  .item.amber { border-left-color: var(--amber); }
+  .item-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .item-title { font-family: var(--serif); font-size: .98rem; font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
+  .item-why { margin-top: 3px; font-size: .82rem; color: var(--ink3); line-height: 1.55; overflow-wrap: anywhere; word-break: break-word; }
+  .item-meta { margin-top: 4px; font-size: .68rem; color: var(--ink4); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .item-meta a { font-weight: 600; text-decoration: none; cursor: pointer; }
+  .item-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* ---- a runner's pane */
+  .panes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 16px; align-items: stretch; }
+  .pane {
+    position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+    background: var(--parchment); border: 1px solid var(--warm); border-left: 3px solid var(--ink5); border-radius: var(--radius);
+    min-height: clamp(520px, calc(100dvh - var(--panes-top, 372px) - 22px), 1400px);
+    transition: border-color .5s, opacity .5s, box-shadow .4s;
+  }
+  .pane.s-running, .pane.s-deciding, .pane.s-between { border-left-color: var(--teal); }
+  .pane.s-waiting, .pane.s-asleep { border-left-color: var(--amber); }
+  .pane.s-paused, .pane.s-fault { border-left-color: var(--bad); }
+  .pane.s-silent, .pane.s-lost { opacity: .66; }
+  .pane.spawn { animation: spawn 1s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes spawn { 0% { opacity: 0; transform: translateY(16px); clip-path: inset(0 0 100% 0); } 55% { opacity: 1; } 100% { transform: none; clip-path: inset(0 0 -1px 0); } }
+  .pane.spawn::after, .pane.cheer::after {
+    content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none;
+    background: linear-gradient(90deg, transparent, var(--teal), transparent);
+    animation: sweep 1.1s ease-out both;
+  }
+  .pane.cheer { box-shadow: 0 0 0 1px var(--gold), 0 10px 34px var(--gold-light); }
+  .pane.cheer::after { background: linear-gradient(90deg, transparent, var(--gold), transparent); height: 3px; }
+  @keyframes sweep { from { top: 0; opacity: 1; } to { top: 100%; opacity: 0; } }
+  .pane.focus .tape { font-size: .8rem; }
+  .pane.focus { position: fixed; z-index: 70; inset: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); min-height: 0; box-shadow: 0 24px 70px rgba(26,23,20,.3); }
+  .dim { position: fixed; inset: 0; background: var(--shade); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); z-index: 60; display: none; }
+  .dim.on { display: block; }
+
+  .p-bar { height: 3px; background: var(--warm); overflow: hidden; }
+  .p-bar i { display: block; height: 100%; width: var(--w, 0%); background: var(--ink4); transition: width 1.2s cubic-bezier(.2,.8,.2,1), background-color .5s; }
+  .pane.s-running .p-bar i, .pane.s-deciding .p-bar i, .pane.s-between .p-bar i { background: linear-gradient(90deg, var(--teal) 0 40%, var(--teal-deep) 50%, var(--teal) 60% 100%) 0 0 / 220px 100%; animation: glide 2.4s linear infinite; }
+  @keyframes glide { to { background-position: 220px 0; } }
+  .p-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 14px 16px 0; }
+  .p-under { padding: 0 16px 6px; }
+  .p-name { font-family: var(--serif); font-size: 1.3rem; font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; word-break: break-word; }
+  .p-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex: 1; }
+  .p-edit { flex: none; border: 0; background: none; color: var(--ink4); cursor: pointer; font-size: .82rem; line-height: 1; padding: 2px 5px; border-radius: var(--radius); opacity: 0; transition: opacity .2s, color .2s; }
+  .pane:hover .p-edit, .p-edit:focus-visible { opacity: 1; }
+  .p-edit:hover { color: var(--teal); }
+  @media (hover: none) { .p-edit { opacity: 1; } }
+  body.fixed-names .p-edit { display: none; }
+  .p-rename { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; flex: 1; min-width: 0; }
+  .p-rename input { flex: 1 1 12rem; min-width: 0; max-width: 24rem; font: 600 1.05rem var(--serif); color: var(--ink); background: var(--cream); border: 1px solid var(--teal); border-radius: var(--radius); padding: 4px 9px; }
+  .p-rename input:focus { outline: 2px solid var(--teal-light); }
+  .p-rename .go { background: var(--teal); border-color: var(--teal); color: #fff; }
+  .p-rename .say { flex-basis: 100%; font-size: .68rem; color: var(--ink3); }
+  .p-rename .say.bad { color: var(--bad); }
+  /* Which agent session is behind the runner, by the identifier its own agent knows it by. */
+  .p-sess { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: .68rem; color: var(--ink3); line-height: 1.5; }
+  .sid { font-family: var(--mono); font-size: .64rem; color: var(--teal); text-decoration: none; border-bottom: 1px dotted var(--teal); cursor: pointer; overflow-wrap: anywhere; word-break: break-all; }
+  .sid:hover, .sid:focus-visible { border-bottom-style: solid; }
+  .toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 120; width: max-content; max-width: min(92vw, 760px); transform: translate(-50%, 24px); opacity: 0; pointer-events: none; background: var(--ink); color: var(--cream); border-radius: var(--radius); padding: 10px 15px; font-size: .78rem; line-height: 1.5; box-shadow: 0 12px 34px rgba(0,0,0,.28); transition: opacity .25s, transform .25s; overflow-wrap: anywhere; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .toast code { font-family: var(--mono); font-size: .92em; -webkit-user-select: all; user-select: all; }
+  .toast small { display: block; margin-top: 2px; font-size: .9em; opacity: .75; }
+  .p-meta { margin-top: 5px; font-size: .58rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ink4); font-variant-numeric: tabular-nums; display: flex; gap: 4px 10px; flex-wrap: wrap; align-items: center; }
+  .p-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: .58rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; padding: 3px 9px; border-radius: 3px; border: 1px solid var(--ink5); color: var(--ink3); background: var(--cream); white-space: nowrap; }
+  .pill .dot { position: relative; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pill.live .dot::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 1px solid currentColor; animation: ripple 1.9s ease-out infinite; }
+  @keyframes ripple { 0% { transform: scale(.35); opacity: .95; } 100% { transform: scale(1.35); opacity: 0; } }
+  .pill.teal { color: var(--teal); background: var(--teal-light); border-color: var(--teal); }
+  .pill.amber { color: var(--amber); background: var(--amber-light); border-color: var(--amber); }
+  .pill.bad { color: var(--bad); background: var(--bad-light); border-color: var(--bad); }
+  .icon { border: 1px solid var(--warm); background: var(--cream); color: var(--ink3); border-radius: var(--radius); width: 28px; height: 26px; cursor: pointer; font-size: .8rem; line-height: 1; transition: color .2s, border-color .2s; }
+  .icon:hover { color: var(--teal); border-color: var(--teal); }
+
+  .p-hand { display: flex; gap: 14px; align-items: center; padding: 6px 16px 8px; min-height: 78px; }
+  .p-hand > div { min-width: 0; flex: 1; }
+  .arc { flex: none; width: 48px; height: 48px; transform: rotate(-90deg); }
+  .arc circle { fill: none; stroke-width: 3; }
+  .arc .rail { stroke: var(--warmer); }
+  .arc .gone { stroke: var(--teal); stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; transition: stroke-dashoffset 1s linear, stroke .6s; }
+  .arc.over .gone { stroke: var(--amber); } .arc.far .gone { stroke: var(--rust); }
+  .arc.unknown .gone { stroke-dasharray: 26 99.7; stroke-dashoffset: 0; animation: turn 2.4s linear infinite; transform-origin: 24px 24px; }
+  .arc.off { display: none; }
+  @keyframes turn { to { transform: rotate(360deg); } }
+  .h-title { font-family: var(--serif); font-size: 1rem; font-style: italic; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; word-break: break-word; }
+  .h-title b { font-style: normal; font-weight: 600; color: var(--teal); margin-right: 7px; font-variant-numeric: tabular-nums; }
+  .h-title.quiet { color: var(--ink3); }
+  .h-tags { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-top: 5px; }
+  .h-clock { font-family: var(--serif); font-size: 1.02rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .h-note { font-size: .7rem; color: var(--ink3); font-variant-numeric: tabular-nums; }
+  .trace { display: block; width: 100%; height: 30px; }
+  .p-trace { padding: 0 16px 6px; }
+
+  .p-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--cream); border-top: 1px solid var(--warm); border-bottom: 1px solid var(--warm); }
+  .p-stat { padding: 8px 12px 7px; border-left: 1px solid var(--warm); min-width: 0; }
+  .p-stat:first-child { border-left: 0; }
+  .s-num { font-family: var(--serif); font-size: 1.12rem; font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .s-num small { font-size: .72rem; font-weight: 400; color: var(--ink4); }
+  .s-lab { margin-top: 2px; font-size: .52rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ink4); }
+
+  .p-block { padding: 8px 16px 4px; }
+  .p-block-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .p-block-h .count { font-size: .64rem; color: var(--ink3); font-variant-numeric: tabular-nums; }
+  .q-cells { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; max-height: 36px; overflow: hidden; }
+  .q-cells i { flex: none; width: 10px; height: 10px; border: 1px solid var(--ink5); border-radius: 1px; }
+  .q-cells i.done { background: var(--ink); border-color: var(--ink); }
+  .q-cells i.hand { background: var(--teal); border-color: var(--teal); animation: throb 1.4s ease-in-out infinite; }
+  .q-cells i.parked { background: var(--amber); border-color: var(--amber); transform: rotate(45deg) scale(.82); }
+  .q-cells i.held { background: linear-gradient(135deg, var(--amber) 50%, transparent 50%); border-color: var(--amber); }
+  .q-cells i.owner { border-style: dashed; border-color: var(--ink3); }
+  .q-cells i.missing { border-style: dotted; opacity: .5; }
+  .q-cells i.flip { animation: flip 1s cubic-bezier(.2,.8,.2,1); }
+  @keyframes throb { 50% { opacity: .35; } }
+  @keyframes flip { 0% { transform: rotateX(90deg) scale(1.9); background: var(--gold); border-color: var(--gold); } 100% { transform: none; } }
+
+  .d-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--warm); font-size: .78rem; cursor: pointer; }
+  .d-item:last-child { border-bottom: 0; }
+  .d-item:hover .d-title { color: var(--teal); }
+  .d-id { font-size: .7rem; font-weight: 600; color: var(--ink2); font-variant-numeric: tabular-nums; }
+  .d-title { color: var(--ink2); line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; transition: color .2s; }
+  .d-meta { font-size: .62rem; color: var(--ink4); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .d-none { font-family: var(--serif); font-style: italic; font-size: .8rem; color: var(--ink4); padding: 4px 0; }
+  .d-item.fresh { animation: lift 1.2s cubic-bezier(.2,.8,.2,1); }
+  @keyframes lift { from { background: var(--gold-light); transform: translateY(-6px); opacity: 0; } }
+  .w-item { margin-top: 6px; padding: 6px 10px; border-left: 3px solid var(--amber); background: var(--amber-light); border-radius: 0 var(--radius) var(--radius) 0; font-size: .76rem; color: var(--ink2); overflow-wrap: anywhere; word-break: break-word; line-height: 1.45; }
+  .w-item b { font-variant-numeric: tabular-nums; margin-right: 6px; }
+
+  /* ---- the output: a paper tape, newest at the foot */
+  .p-tape-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 16px 5px; }
+  .p-unsent { margin: 0 16px 8px; padding: 6px 10px; border-left: 3px solid var(--bad); background: var(--bad-light); border-radius: 0 var(--radius) var(--radius) 0; font-size: .74rem; line-height: 1.45; color: var(--ink2); overflow-wrap: anywhere; }
+  .p-unsent[hidden] { display: none; }
+  /* The tape sits out of the flow, so a long output never makes its pane taller: the pane's height decides the tape's. */
+  .tape-wrap { position: relative; flex: 1 1 auto; min-height: clamp(220px, 30vh, 320px); border-top: 1px solid var(--warm); border-bottom: 1px solid var(--warm); background: var(--cream); }
+  .tape-wrap::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 16px; background: linear-gradient(var(--cream), transparent); pointer-events: none; z-index: 1; }
+  .tape { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 8px 0 10px; font-family: var(--mono); font-size: .68rem; line-height: 1.5; scrollbar-width: thin; scrollbar-color: var(--warmer) transparent; }
+  .ln { display: grid; grid-template-columns: 4.4em minmax(0, 1fr); gap: 0 10px; padding: 0 14px 0 10px; border-left: 2px solid transparent; }
+  .ln .t { color: var(--ink4); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; -webkit-user-select: none; user-select: none; }
+  .ln .x { color: var(--ink3); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
+  .ln.say .x { color: var(--ink); }
+  .ln.call .x { color: var(--teal); }
+  .ln.sys .x { color: var(--ink2); font-weight: 600; }
+  .ln.err { border-left-color: var(--bad); background: var(--bad-light); } .ln.err .x { color: var(--bad); }
+  .ln.q { border-left-color: var(--gold); background: var(--gold-light); } .ln.q .x { color: var(--ink2); }
+  .ln.mark { display: flex; align-items: center; gap: 10px; margin: 9px 0 5px; padding: 0 14px; font-family: var(--sans); font-size: .54rem; letter-spacing: .18em; text-transform: uppercase; color: var(--ink4); }
+  .ln.mark::before, .ln.mark::after { content: ''; flex: 1; height: 1px; background: var(--ink5); }
+  .ln.new { animation: line-in .4s ease-out; }
+  @keyframes line-in { from { opacity: 0; transform: translateY(5px); } }
+  .tape-end { padding: 2px 14px 0 calc(4.4em + 22px); height: 1.4em; }
+  .caret { display: none; width: .55em; height: 1em; background: var(--teal); vertical-align: -.12em; animation: blink 1.05s steps(2, start) infinite; }
+  .pane.s-running .caret, .pane.s-deciding .caret { display: inline-block; }
+  @keyframes blink { to { visibility: hidden; } }
+  .jump { position: absolute; right: 12px; bottom: 10px; z-index: 2; display: none; border: 1px solid var(--teal); background: var(--teal); color: #fff; border-radius: 999px; padding: 4px 12px; font-size: .62rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; box-shadow: 0 4px 14px rgba(26,23,20,.18); }
+  .jump.on { display: block; }
+  .p-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 16px 11px; font-size: .72rem; }
+  .p-foot a { font-weight: 600; text-decoration: none; cursor: pointer; }
+  .p-foot a:hover { text-decoration: underline; }
+  .p-foot .raw { font-weight: 400; color: var(--ink3); }
+
+  /* ---- runners that have stopped or gone quiet */
+  .rest { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); }
+
+  /* ---- the task list: a sheet over the page */
+  .back { position: fixed; inset: 0; z-index: 90; display: none; align-items: flex-start; justify-content: center; padding: 28px; background: var(--shade); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .back.on { display: flex; }
+  .sheet { width: min(980px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--cream); border: 1px solid var(--ink2); border-radius: 5px; box-shadow: 0 30px 80px rgba(0,0,0,.3); animation: sheet-in .35s cubic-bezier(.2,.8,.2,1); }
+  @keyframes sheet-in { from { opacity: 0; transform: translateY(18px); } }
+  .sheet-head { padding: 18px 22px 0; border-bottom: 1px solid var(--warm); background: var(--parchment); }
+  .sheet-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .sheet-title { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; line-height: 1.15; margin-top: 3px; overflow-wrap: anywhere; }
+  .sheet-sub { font-family: var(--serif); font-style: italic; font-size: .86rem; color: var(--ink3); margin-top: 4px; }
+  .sheet-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin-top: 12px; }
+  .tabs { display: flex; gap: 0; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 9px 12px 8px; font-size: .6rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink4); cursor: pointer; white-space: nowrap; }
+  .tab:hover { color: var(--ink2); }
+  .tab.on { color: var(--teal); border-bottom-color: var(--teal); }
+  .tab .n { margin-left: 5px; font-weight: 400; font-variant-numeric: tabular-nums; }
+  .find { flex: 1 1 180px; max-width: 280px; min-width: 0; margin-bottom: 6px; border: 1px solid var(--warmer); border-radius: var(--radius); background: var(--cream); color: var(--ink); padding: 6px 10px; font: 400 .8rem var(--sans); }
+  .find:focus { outline: none; border-color: var(--teal); }
+  .sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 22px 22px; flex: 1; }
+  .task { border-bottom: 1px solid var(--warm); }
+  .task-head { display: grid; grid-template-columns: 14px auto minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 9px 0 8px; cursor: pointer; }
+  .task-head:hover .task-title { color: var(--teal); }
+  .glyph { width: 10px; height: 10px; border: 1px solid var(--ink5); border-radius: 1px; align-self: center; }
+  .glyph.done { background: var(--ink); border-color: var(--ink); }
+  .glyph.hand { background: var(--teal); border-color: var(--teal); animation: throb 1.4s ease-in-out infinite; }
+  .glyph.parked { background: var(--amber); border-color: var(--amber); transform: rotate(45deg) scale(.82); }
+  .glyph.held { background: linear-gradient(135deg, var(--amber) 50%, transparent 50%); border-color: var(--amber); }
+  .glyph.owner { border-style: dashed; border-color: var(--ink3); }
+  .task-id { font-size: .74rem; font-weight: 600; color: var(--ink2); font-variant-numeric: tabular-nums; }
+  .task-title { font-family: var(--serif); font-size: .96rem; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; word-break: break-word; transition: color .2s; }
+  .task-tags { grid-column: 3; display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .task-body { display: none; margin: 0 0 12px 24px; padding: 10px 14px; background: var(--parchment); border-left: 3px solid var(--warmer); border-radius: 0 var(--radius) var(--radius) 0; font-size: .82rem; line-height: 1.6; color: var(--ink2); overflow-wrap: anywhere; word-break: break-word; }
+  .task.open .task-body { display: block; }
+  .task-body p { margin: 0 0 6px; white-space: pre-wrap; }
+  .task-body p:last-child { margin-bottom: 0; }
+  .task-body .lab { font-size: .58rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink4); margin-right: 6px; }
+  .task-body code, .item-why code { font-family: var(--mono); font-size: .92em; background: var(--warm); border-radius: 2px; padding: 0 4px; }
+  .more { display: block; margin: 14px auto 0; }
+  mark { background: var(--gold-light); color: inherit; box-shadow: 0 1px 0 var(--gold); }
+  .help { width: min(460px, 100%); }
+  .help table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .help td { padding: 7px 0; border-bottom: 1px solid var(--warm); color: var(--ink2); }
+  .help td:first-child { width: 96px; }
+  .kbd { display: inline-block; min-width: 22px; text-align: center; font-family: var(--mono); font-size: .72rem; border: 1px solid var(--warmer); border-bottom-width: 2px; border-radius: 3px; padding: 1px 6px; background: var(--parchment); color: var(--ink2); }
+
+  @media (max-width: 1500px) { .glance { grid-template-columns: 1fr; } .hours-bars { min-height: 34px; } }
+  @media (max-width: 920px) {
+    header { padding-left: 20px; padding-right: 20px; }
+    main { padding-left: 20px; padding-right: 20px; }
+    .pane { min-height: 0; }
+    .tape-wrap { flex: none; height: 46vh; min-height: 250px; max-height: 520px; }
+    .pane.focus .tape-wrap { flex: 1 1 auto; height: auto; max-height: none; }
+  }
+  @media (max-width: 600px) {
+    header { padding-top: calc(16px + env(safe-area-inset-top)); padding-left: 16px; padding-right: 16px; }
+    main { padding-left: 14px; padding-right: 14px; }
+    h1 { font-size: 1.9rem; }
+    .edition-line { font-size: .82rem; }
+    .vitals { grid-template-columns: 1fr 1fr; }
+    .v-num { font-size: 1.45rem; }
+    .p-stats { grid-template-columns: 1fr 1fr; }
+    .p-stat:nth-child(3) { border-left: 0; }
+    .p-stat:nth-child(n+3) { border-top: 1px solid var(--warm); }
+    .p-head, .p-under, .p-hand, .p-block, .p-tape-h, .p-foot, .p-trace { padding-left: 13px; padding-right: 13px; }
+    .p-unsent { margin-left: 13px; margin-right: 13px; }
+    .tape { font-size: .64rem; }
+    .ln { grid-template-columns: 3.7em minmax(0, 1fr); gap: 0 8px; padding: 0 10px 0 6px; }
+    .tape-end { padding-left: calc(3.7em + 16px); }
+    .back { padding: 0; }
+    .sheet { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+    .sheet-head { padding: calc(14px + env(safe-area-inset-top)) 16px 0; }
+    .sheet-body { padding: 6px 16px calc(20px + env(safe-area-inset-bottom)); }
+    .task-body { margin-left: 0; }
+    .icon, .tool { min-height: 34px; min-width: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="masthead">
+    <div class="mast-left">
+      <h1>Runner <em>Watch</em></h1>
+      <span class="crumbs"><a id="home" href="/" hidden>&larr; Home</a><span id="home-dot" hidden> &middot; </span>Operator view</span>
+    </div>
+    <div class="mast-tools">
+      <span class="conn unknown" id="link"><span class="dot"></span><span id="link-text">Connecting</span></span>
+      <span id="clock"></span>
+      <button class="tool" id="theme" type="button" title="Switch between the light and the dark sheet (d)" aria-label="Switch between light and dark">&#9680;</button>
+      <button class="tool" id="help-open" type="button" title="Keys (?)" aria-label="Keyboard help">?</button>
+    </div>
+  </div>
+  <p class="edition-line">Every runner at work: what it has delivered, what it is doing now, and what waits for you.</p>
+  <div class="wire" aria-live="polite"><span class="wire-k">Wire</span><span class="wire-t" id="wire">Listening for runners.</span></div>
+</header>
+
+<main>
+  <div class="section-rule"><span>At a glance</span></div>
+  <div class="glance">
+    <div class="vitals" id="vitals"></div>
+    <div class="hours">
+      <div class="hours-h"><span class="kicker">Delivered, last 24 hours</span><b id="hours-total"></b></div>
+      <div class="hours-bars" id="hours-bars"></div>
+      <div class="hours-axis" id="hours-axis"></div>
+    </div>
+  </div>
+
+  <div id="asks-wrap" hidden>
+    <div class="section-rule"><span>Waiting for you</span></div>
+    <p class="lede">Each question is asked once and its task waits. Answer by adding a signed line to that project's DECISIONS.md.</p>
+    <div class="asks" id="asks"></div>
+  </div>
+
+  <div class="section-rule"><span>At work</span></div>
+  <p class="lede" id="work-lede">One pane for each runner. A new runner gets its pane the moment it reports.</p>
+  <div class="panes" id="panes"></div>
+  <p class="empty" id="none" hidden>No runner is at work.</p>
+
+  <div id="rest-wrap" hidden>
+    <div class="section-rule"><span>Finished or silent</span></div>
+    <p class="lede">Runners that have stopped, or have not reported for ten minutes. Each leaves this page after the time the dashboard keeps it.</p>
+    <div class="rest" id="rest"></div>
+  </div>
+</main>
+
+<footer>
+  A runner shows here when it starts on a machine whose settings name this dashboard.
+  <span class="stamp" id="stamp">Not yet updated</span>
+</footer>
+
+<div class="dim" id="dim"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="back" id="sheet-back"><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Task list"></div></div>
+<div class="back" id="help-back">
+  <div class="sheet help" role="dialog" aria-modal="true" aria-label="Keys">
+    <div class="sheet-head"><div class="sheet-top"><div><span class="kicker">Keys</span><div class="sheet-title">Getting about</div></div><button class="icon" id="help-close" type="button" aria-label="Close">&times;</button></div><div class="sheet-bar"></div></div>
+    <div class="sheet-body"><table>
+      <tr><td><span class="kbd">1</span> to <span class="kbd">9</span></td><td>Fill the screen with that runner's pane</td></tr>
+      <tr><td><span class="kbd">f</span></td><td>Fill the screen with the first pane, or put it back</td></tr>
+      <tr><td><span class="kbd">t</span></td><td>Open the task list of the pane in view</td></tr>
+      <tr><td><span class="kbd">d</span></td><td>Switch between the light and the dark sheet</td></tr>
+      <tr><td>&#9998; by a name</td><td>Give that runner a name of your own, kept for every device</td></tr>
+      <tr><td>An identifier</td><td>Click it to copy the command that opens that agent session again</td></tr>
+      <tr><td><span class="kbd">Esc</span></td><td>Close whatever is open</td></tr>
+    </table></div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ---- small tools
+const $ = (id) => document.getElementById(id);
+// Every piece of text from a runner goes through here, as text. Nothing is ever parsed as HTML.
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'on') for (const [name, fn] of Object.entries(v)) el.addEventListener(name, fn);
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
+  return el;
+}
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('runners:' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('runners:' + k, JSON.stringify(v)); } catch (e) { /* private window */ } },
+};
+// The page may be served under any path (for example /runners/), so everything it asks for is beside it.
+const BASE = (() => {
+  let p = location.pathname;
+  if (!p.endsWith('/')) p = /\.html?$/i.test(p) ? p.slice(0, p.lastIndexOf('/') + 1) : p + '/';
+  return p;
+})();
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SILENT = 20;           // seconds without a report before a runner counts as silent
+const TO_REST = 600;         // seconds before a silent or stopped runner moves below
+const KEEP_LINES = 1500;     // lines kept in one pane's output
+const pad = (n) => String(n).padStart(2, '0');
+
+const STATE = { models: new Map(), offset: 0, lastOk: 0, failing: '', up: 0, version: '', focus: null, sheet: null, wire: [], wireAt: 0, pinned: new Set(LS.get('pinned', [])), first: true };
+const now = () => Date.now() / 1000 + STATE.offset;        // the dashboard's clock, in seconds
+
+// ---- how things are said
+function ago(seconds) {
+  if (seconds < 5) return 'just now';
+  if (seconds < 90) return Math.round(seconds) + 's ago';
+  if (seconds < 5400) return Math.round(seconds / 60) + 'm ago';
+  if (seconds < 172800) return Math.floor(seconds / 3600) + 'h ' + pad(Math.floor(seconds % 3600 / 60)) + 'm ago';
+  return Math.floor(seconds / 86400) + 'd ago';
+}
+function span(seconds) {
+  seconds = Math.max(0, Math.floor(seconds));
+  const hrs = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
+  return hrs ? hrs + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s);
+}
+function long(seconds) {
+  if (seconds < 3600) return Math.max(1, Math.round(seconds / 60)) + 'm';
+  if (seconds < 172800) return Math.floor(seconds / 3600) + 'h ' + pad(Math.floor(seconds % 3600 / 60)) + 'm';
+  return Math.floor(seconds / 86400) + 'd ' + Math.floor(seconds % 86400 / 3600) + 'h';
+}
+const clock = (epoch) => { const d = new Date(epoch * 1000); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const money = (v) => v == null ? '\u2014' : '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-GB') : v.toFixed(2));
+const tokens = (v) => v == null ? '\u2014' : (v >= 100 ? Math.round(v) : v.toFixed(1)) + 'M';
+const share = (a, b) => b ? Math.round(100 * a / b) + '%' : '\u2014';
+const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+
+// A number that changes rolls to its new value, digit by digit, and is plain text again afterwards.
+function roll(el, text) {
+  text = String(text);
+  const old = el.dataset.v;
+  if (old === text) return;
+  el.dataset.v = text;
+  if (REDUCED || old == null || old.length !== text.length) { el.textContent = text; return; }
+  el.textContent = '';
+  [...text].forEach((ch, i) => {
+    if (ch === old[i]) el.append(ch);
+    else el.append(h('span', { class: 'roll' }, h('span', null, old[i], h('br'), ch)));
+  });
+  setTimeout(() => { if (el.dataset.v === text) el.textContent = text; }, 760);
+}
+
+// ---- what a runner is doing, in the page's words
+function status(r, age) {
+  if (r.state === 'stopped') return { k: 'stopped', label: 'Stopped', tone: '' };
+  // When the page itself has lost the dashboard, nothing is known about any runner: say that, not "no signal".
+  if (STATE.failing && Date.now() - STATE.lastOk > 6000) return { k: 'lost', label: 'Page out of touch', tone: '' };
+  if (age > SILENT) return { k: 'silent', label: 'No signal', tone: '' };
+  if (r.state === 'running') return r.task && r.task.asleep ? { k: 'asleep', label: 'Asleep', tone: 'amber' } : { k: 'running', label: 'At work', tone: 'teal', live: true };
+  if (r.state === 'deciding') return { k: 'deciding', label: 'Deciding a stop', tone: 'teal', live: true };
+  if (r.state === 'paused') return { k: 'paused', label: 'Paused', tone: 'bad' };
+  if (r.state === 'fault') return { k: 'fault', label: 'Reporter fault', tone: 'bad' };
+  if ((r.counts || {}).parked > 0) return { k: 'waiting', label: 'Waiting for you', tone: 'amber' };
+  if (r.state === 'idle') return { k: 'idle', label: 'Queue idle', tone: '' };
+  return { k: 'between', label: 'Between tasks', tone: 'teal' };
+}
+const CELL = new Set(['done', 'hand', 'parked', 'held', 'owner', 'missing', 'open']);
+const atWork = (s) => s.k === 'running' || s.k === 'deciding' || s.k === 'between' || s.k === 'asleep';
+// The name a runner goes by on this page: the one the owner gave it here, else its project's own.
+const project = (d) => (d.info || {}).project || d.id || '';
+const label = (m) => m.data.label || project(m.data) || m.id;
+
+// ---- a word at the foot of the screen, for a moment
+let toastTimer = null;
+function toast(lead, code, hint, stay) {
+  const el = $('toast');
+  el.textContent = '';
+  el.append(lead, code ? h('code', null, code) : '', hint ? h('small', null, hint) : '');
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), stay || 4200);
+}
+async function copy(text, hint) {
+  let done = false;
+  try { await navigator.clipboard.writeText(text); done = true; } catch (e) {
+    const box = h('textarea', { 'aria-hidden': 'true', readonly: true });   // a page not served over https has no clipboard
+    box.value = text; box.style.position = 'fixed'; box.style.opacity = '0';
+    document.body.append(box); box.select();
+    try { done = document.execCommand('copy'); } catch (e2) { done = false; }
+    box.remove();
+  }
+  if (done) toast('Copied: ', text, hint);
+  else toast('This browser would not copy it. Select it here: ', text, hint, 15000);
+}
+
+// ---- the agent session behind a runner, and how to open it again
+// (An object with nothing inherited: an agent called "constructor" in a report must find nothing here.)
+const AGENT = Object.assign(Object.create(null), {
+  claude: { name: 'Claude Code', open: (id) => 'claude --resume ' + id },
+  codex: { name: 'Codex', open: (id) => 'codex resume ' + id },
+});
+const hasOwn = (o, key) => o != null && Object.prototype.hasOwnProperty.call(o, key);
+const PLAIN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+function sessionLink(lead, s) {
+  // The command is for pasting into a terminal. The dashboard has already dropped anything that is not plainly
+  // an identifier; this is the same test again, here where the command is made.
+  if (!PLAIN_ID.test(s.id)) return h('span', null, lead + ' an identifier this page will not put in a command');
+  const agent = AGENT[s.agent], command = agent ? agent.open(s.id) : s.id;
+  const hint = agent ? 'Paste it in a terminal on the machine that runs this runner to open that session again.' : 'The dashboard knows no command for this agent, so only the identifier was copied.';
+  return h('span', null, lead + ' ',
+    h('a', { class: 'sid', href: '#', role: 'button', title: (agent ? command + '\n' : '') + 'Click to copy' + (agent ? ' this command' : ' the identifier'), on: { click: (e) => { e.preventDefault(); copy(command, hint); } } }, s.id));
+}
+// A runner's own times are on its own clock; skew turns them into the dashboard's.
+const since = (m, epoch) => now() - (epoch + (m.data.skew || 0));
+// How long since a runner reported. A page just brought back into view has not asked for a while, by its own
+// choice, so until its next question is answered it does not count that time against the runners.
+const ageOf = (m) => (m.data.age || 0) + (STATE.back ? 0 : (Date.now() - m.at) / 1000);
+
+// ---- one output line
+const RX_OUT = /^\s*(\d+)s {2}(.*)$/, RX_Q = /^(\d{4})-(\d\d)-(\d\d) (\d\d:\d\d:\d\d) (.*)$/, RX_LOG = /^(.+)-(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)\.log$/;
+function session(text) {
+  const m = RX_OUT.exec(text);
+  if (m) {
+    const body = m[2], t = Math.floor(m[1] / 60) + ':' + pad(m[1] % 60);
+    if (body.startsWith('-> ')) return { cls: 'call', t, x: body };
+    if (/^\s*<- ERROR/.test(body) || body.startsWith('ERROR')) return { cls: 'err', t, x: body.trimStart() };
+    if (/^\s*<- /.test(body)) return { cls: 'res', t, x: body.trimStart() };
+    if (/^(claude|codex): /.test(body)) return { cls: 'say', t, x: body };
+    return { cls: 'sys', t, x: body };
+  }
+  if (/^\s*(STOP:|RUNNER: (blocked|question)|SUPERVISOR: (waiting|skip))/.test(text)) return { cls: 'err', t: '', x: text.trim() };
+  if (/^ {6}\S/.test(text)) return { cls: 'say', t: '', x: text.trim() };
+  return { cls: 'sys', t: '', x: text };
+}
+const day = (y, mo, d) => new Date(y, mo - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+// One line of output as elements. The queue log's lines carry a date: `tape` remembers the last one shown,
+// and a rule names the day whenever it changes.
+function line([, kind, text], fresh, tape) {
+  if (kind === 'm') {
+    const m = RX_LOG.exec(text);
+    return [h('div', { class: 'ln mark' }, m ? `Task ${m[1]} \u00b7 ${day(m[2], m[3], m[4])} ${m[5]}:${m[6]}` : text === 'again' ? 'This log was written again' : 'Some lines were not sent')];
+  }
+  const out = [];
+  let part;
+  if (kind === 'q') {
+    const m = RX_Q.exec(text);
+    if (m && tape.day !== m[1] + m[2] + m[3]) { tape.day = m[1] + m[2] + m[3]; out.push(h('div', { class: 'ln mark' }, 'Queue log \u00b7 ' + day(m[1], m[2], m[3]))); }
+    part = m ? { cls: 'q', t: m[4].slice(0, 5), x: m[5] } : session(text);       // a stop session's output is in the queue log too
+  } else part = session(text);
+  out.push(h('div', { class: 'ln ' + part.cls + (fresh ? ' new' : '') }, h('span', { class: 't' }, part.t), h('span', { class: 'x' }, part.x)));
+  return out;
+}
+
+// ---- a name of the owner's own for a runner. The dashboard keeps it, so every device shows the same one.
+function rename(m) {
+  if (m.editing) return;
+  m.editing = true;
+  const r = m.r, own = project(m.data);
+  const input = h('input', { type: 'text', maxlength: '60', value: m.data.label || '', placeholder: own, 'aria-label': 'A name for this runner', autocomplete: 'off', spellcheck: 'false' });
+  const say = h('span', { class: 'say' }, `Shown on every device that opens this page. Leave it empty to go back to ${own}.`);
+  const close = () => { m.editing = false; box.replaceWith(r.titleRow); };
+  const save = async () => {
+    try {
+      const res = await fetch(BASE + 'api/name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id, name: input.value }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) throw new Error(body.error || 'the dashboard answered ' + res.status);
+      m.data.label = body.label || '';
+      close(); m.sig = {}; paint(m); fleet(); place();
+    } catch (e) {
+      say.className = 'say bad'; say.textContent = 'Not saved: ' + (e.message || 'no answer') + '.';
+    }
+  };
+  const box = h('div', { class: 'p-rename' }, input,
+    h('button', { class: 'tool go', type: 'button', on: { click: save } }, 'Save'),
+    h('button', { class: 'tool', type: 'button', on: { click: close } }, 'Cancel'), say);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); close(); }
+  });
+  r.titleRow.replaceWith(box);
+  input.focus(); input.select();
+}
+
+// ---- the wire: one line of news, newest first
+function wire(text) {
+  STATE.wire.unshift({ at: Date.now(), text });
+  STATE.wire.length = Math.min(STATE.wire.length, 8);
+  showWire(0);
+}
+function showWire(i) {
+  const item = STATE.wire[i];
+  if (!item) return;
+  STATE.wireAt = Date.now(); STATE.wireI = i;
+  const el = $('wire'), d = new Date(item.at);
+  el.textContent = '';
+  el.append(h('time', null, pad(d.getHours()) + ':' + pad(d.getMinutes())), item.text);
+  el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
+}
+
+// ---- a pane
+function makePane(m) {
+  const r = {};
+  const tape = h('div', { class: 'tape', tabindex: '0', 'aria-label': 'Output' });
+  r.end = h('div', { class: 'tape-end' }, h('span', { class: 'caret' }));
+  tape.append(r.end);
+  r.jump = h('button', { class: 'jump', type: 'button', on: { click: () => { m.stick = true; tape.scrollTop = tape.scrollHeight; r.jump.classList.remove('on'); } } }, '\u2193 Live');
+  // The output stays at its newest line until a person scrolls away from it; a pane changing size does not count.
+  let touched = 0;
+  for (const name of ['wheel', 'touchmove', 'pointerdown', 'keydown']) tape.addEventListener(name, () => { touched = Date.now(); }, { passive: true });
+  tape.addEventListener('scroll', () => {
+    const atFoot = tape.scrollHeight - tape.scrollTop - tape.clientHeight < 28;
+    if (atFoot) m.stick = true;
+    else if (Date.now() - touched < 2000) m.stick = false;
+    else if (m.stick) tape.scrollTop = tape.scrollHeight;
+    r.jump.classList.toggle('on', !m.stick);
+  }, { passive: true });
+  new ResizeObserver(() => { if (m.stick) tape.scrollTop = tape.scrollHeight; }).observe(tape);
+  const arc = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  arc.setAttribute('viewBox', '0 0 48 48'); arc.setAttribute('class', 'arc off'); arc.setAttribute('aria-hidden', 'true');
+  for (const cls of ['rail', 'gone']) {
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', '24'); c.setAttribute('cy', '24'); c.setAttribute('r', '20'); c.setAttribute('class', cls);
+    arc.append(c);
+  }
+  r.arc = arc; r.gone = arc.lastChild;
+  r.stats = ['Tasks done', 'Finish rate', 'Tokens', 'Spend'].map((lab) => {
+    const num = h('div', { class: 's-num' }, '\u2014');
+    return { num, el: h('div', { class: 'p-stat' }, num, h('div', { class: 's-lab' }, lab)) };
+  });
+  const el = h('article', { class: 'pane', 'data-id': m.id },
+    h('div', { class: 'p-bar' }, r.bar = h('i')),
+    h('div', { class: 'p-head' },
+      r.titleRow = h('div', { class: 'p-title' },
+        r.name = h('div', { class: 'p-name' }),
+        h('button', { class: 'p-edit', type: 'button', title: 'Give this runner a name of your own', 'aria-label': 'Give this runner a name of your own', on: { click: () => rename(m) } }, '✎')),
+      h('div', { class: 'p-side' },
+        r.pill = h('span', { class: 'pill' }, h('span', { class: 'dot' }), r.pillText = h('span')),
+        r.focus = h('button', { class: 'icon', type: 'button', title: 'Fill the screen with this pane', 'aria-label': 'Fill the screen with this pane', on: { click: () => focus(STATE.focus === m.id ? null : m.id) } }, '\u2922'))),
+    h('div', { class: 'p-under' }, r.sess = h('div', { class: 'p-sess' }), r.meta = h('div', { class: 'p-meta' })),
+    h('div', { class: 'p-hand' }, arc,
+      h('div', null, r.kick = h('span', { class: 'kicker' }, 'In hand'), r.title = h('div', { class: 'h-title' }), r.tags = h('div', { class: 'h-tags' }))),
+    h('div', { class: 'p-trace' }, r.trace = h('canvas', { class: 'trace', 'aria-hidden': 'true' })),
+    h('div', { class: 'p-stats' }, r.stats.map((s) => s.el)),
+    h('div', { class: 'p-block' },
+      h('div', { class: 'p-block-h' }, h('span', { class: 'kicker' }, 'The queue'), r.qcount = h('span', { class: 'count' })),
+      r.cells = h('div', { class: 'q-cells' })),
+    h('div', { class: 'p-block' },
+      h('div', { class: 'p-block-h' }, h('span', { class: 'kicker' }, 'Delivered'), r.dcount = h('span', { class: 'count' })),
+      r.done = h('div'),
+      r.asks = h('div')),
+    h('div', { class: 'p-tape-h' }, h('span', { class: 'kicker' }, 'Output'), r.signal = h('span', { class: 'kicker num' })),
+    r.unsent = h('div', { class: 'p-unsent', role: 'status', hidden: '' }),
+    h('div', { class: 'tape-wrap' }, tape, r.jump),
+    h('div', { class: 'p-foot' },
+      r.open = h('a', { href: '#tasks=' + m.id }, 'Task list \u2192'),
+      r.raw = h('a', { class: 'raw', href: BASE + 'api/tasks.md?id=' + m.id, target: '_blank', rel: 'noopener' }, 'TASKS.md as written')));
+  r.tape = tape;
+  m.el = el; m.r = r; m.stick = true; m.hits = []; m.sig = {};
+  return el;
+}
+
+function addLines(m, lines, reset) {
+  const { tape, end } = m.r;
+  if (reset) { while (tape.firstChild !== end) tape.firstChild.remove(); m.count = 0; m.tape = {}; }
+  if (!lines.length) return;
+  const lively = !reset && !STATE.first && lines.length <= 40;
+  const piece = document.createDocumentFragment();
+  for (const l of lines) piece.append(...line(l, lively, m.tape || (m.tape = {})));
+  m.count = (m.count || 0) + piece.childNodes.length;
+  tape.insertBefore(piece, end);
+  while (m.count > KEEP_LINES) { tape.firstChild.remove(); m.count--; }
+  if (!reset) m.hits.push({ at: performance.now(), n: lines.filter((l) => l[1] !== 'm').length });
+  if (m.stick) tape.scrollTop = tape.scrollHeight;
+}
+
+function paint(m) {
+  const d = m.data, r = m.r, age = ageOf(m), s = status(d, age), info = d.info || {}, counts = d.counts || {}, use = d.usage || {}, task = d.task;
+  m.status = s;
+  m.el.className = 'pane s-' + s.k + (m.spawn ? ' spawn' : '') + (m.cheer ? ' cheer' : '') + (STATE.focus === m.id ? ' focus' : '');
+  r.name.textContent = label(m);
+
+  // Under the name: which agent session is doing the work, and which supervising session said it is in charge.
+  const ss = d.sessions || {}, ssig = JSON.stringify(ss);
+  if (ssig !== m.sig.sess) {
+    m.sig.sess = ssig;
+    r.sess.textContent = '';
+    const w = ss.work, c = ss.charge;
+    if (w && typeof w.id === 'string' && w.id) {
+      const who = (AGENT[w.agent] || {}).name || w.name || 'Agent';
+      r.sess.append(sessionLink(w.kind === 'stop' ? `Stop session on ${w.task}, ${who}:` : w.live ? `${who} session at task ${w.task}:` : `Last session, ${who}, task ${w.task}:`, w));
+    }
+    if (c && typeof c.id === 'string' && c.id) r.sess.append(sessionLink(`In charge, ${(AGENT[c.agent] || {}).name || c.agent || 'a session'}:`, c));
+  }
+  r.pill.className = 'pill ' + s.tone + (s.live ? ' live' : '');
+  r.pillText.textContent = s.label;
+  // The runner's state arrives and some of its files do not: said here, or an empty Output would pass for a quiet one.
+  const unsent = typeof d.unsent === 'string' ? d.unsent : '';
+  if (unsent !== m.sig.unsent) {
+    m.sig.unsent = unsent;
+    r.unsent.hidden = !unsent;
+    r.unsent.textContent = unsent ? 'Not reaching the dashboard: ' + unsent + '. What is shown of it here may be old.' : '';
+  }
+
+  // In hand, or why nothing is
+  const sig = JSON.stringify([s.k, task, d.note, d.last, d.check, d.fault, d.deploy, counts.parked, counts.open]);
+  if (sig !== m.sig.hand) {
+    m.sig.hand = sig;
+    r.title.textContent = ''; r.tags.textContent = '';
+    r.title.className = 'h-title' + (task && s.k !== 'silent' ? '' : ' quiet');
+    if (task && (s.k === 'running' || s.k === 'asleep' || s.k === 'deciding')) {
+      r.kick.textContent = s.k === 'deciding' ? 'A stop session is deciding on' : 'In hand';
+      r.title.append(h('b', null, task.id), task.title || 'a task with no heading in TASKS.md');
+      if (task.letter) r.tags.append(h('span', { class: 'tag' }, task.letter + ' ' + (task.effort || '')));
+      if (task.model) r.tags.append(h('span', { class: 'tag' }, task.model));
+      if (task.attempt) r.tags.append(h('span', { class: 'tag' + (task.attempt > 1 ? ' amber' : '') }, 'attempt ' + task.attempt + (task.attempts ? ' of ' + task.attempts : '')));
+      r.tags.append(r.clock = h('span', { class: 'h-clock' }), r.note = h('span', { class: 'h-note' }));
+    } else {
+      r.kick.textContent = 'Now';
+      const last = d.last ? ` The last run, ${d.last.id}, ${d.last.exit === 0 ? 'finished' : 'stopped (exit ' + d.last.exit + ')'}.` : '';
+      const words = s.k === 'stopped' ? 'Stopped. The queue is not running.' + last
+        : s.k === 'silent' ? 'No report. The runner may have ended without saying so, or its machine is asleep.'
+        : s.k === 'lost' ? 'This page cannot reach the dashboard, so what is below is as it was when the page last heard.'
+        : s.k === 'paused' ? 'Paused. ' + (d.note || '')
+        : s.k === 'fault' ? 'The program that reports this runner cannot read its workspace: ' + (d.fault || 'no reason given') + '. The runner itself is not affected.'
+        : s.k === 'waiting' ? `Waiting for your answer on ${plural(counts.parked, 'task')}.` + last
+        : s.k === 'idle' ? (counts.open ? `Idle. ${plural(counts.open, 'task')} not done, none of them runnable from the queue.` : 'Idle. Nothing is left to run.') + last
+        : 'Between tasks.' + last;
+      r.title.append(words);
+      r.clock = r.note = null;
+    }
+    if (d.check === 'fail') r.tags.append(h('span', { class: 'tag bad', title: 'The project\'s own check fails, so commits are not being judged against it.' }, 'check failing'));
+    if (d.deploy && d.deploy.not_live) r.tags.append(h('span', { class: 'tag' + (d.deploy.not_live >= 10 ? ' bad' : ' amber') }, d.deploy.not_live + ' built, not live'));
+    if (d.fault) r.tags.append(h('span', { class: 'tag bad', title: d.fault }, 'reporter fault'));
+  }
+
+  // Figures
+  roll(r.stats[0].num, (counts.done ?? '\u2014') + ' / ' + (counts.total ?? '\u2014'));
+  roll(r.stats[1].num, share(use.finished, use.runs));
+  roll(r.stats[2].num, tokens(use.tokens));
+  roll(r.stats[3].num, money(use.cost));
+  r.stats[1].el.title = use.runs ? `${use.finished} of ${plural(use.runs, 'task run')} ended with the task finished` : 'No task run is recorded yet';
+  r.stats[2].el.title = 'All sessions, re-reads of cached context included';
+  r.stats[3].el.title = 'At list price, as the agent reports it';
+
+  // The queue, one cell a task
+  const queue = Array.isArray(d.queue) ? d.queue : [];
+  const qsig = queue.map((q) => q.id + q.state).join('|');
+  if (qsig !== m.sig.queue) {
+    const was = m.sig.states || new Map();
+    r.cells.textContent = '';
+    for (const q of queue) {
+      if (!CELL.has(q.state)) q.state = 'open';      // a class name is never taken from a report as it comes
+      r.cells.append(h('i', { class: q.state + (was.has(q.id) && was.get(q.id) !== 'done' && q.state === 'done' ? ' flip' : ''), title: q.id + '  ' + (q.title || '') }));
+    }
+    m.sig.queue = qsig; m.sig.states = new Map(queue.map((q) => [q.id, q.state]));
+  }
+  r.bar.style.setProperty('--w', (counts.queue ? Math.round(100 * counts.queue_done / counts.queue) : 0) + '%');
+  r.qcount.textContent = counts.queue ? `${counts.queue_done} of ${counts.queue} done` + (counts.total > counts.queue ? `, ${counts.total - counts.queue} more not in it` : '') : 'empty';
+
+  // Delivered, newest first
+  const done = Array.isArray(d.delivered) ? d.delivered : [];
+  const dsig = done.slice(0, 3).map((x) => x.id).join('|') + (d.parked || []).map((p) => p.id + p.why).join('|');
+  if (dsig !== m.sig.done) {
+    const firstTime = m.sig.done == null;
+    r.done.textContent = ''; r.asks.textContent = '';
+    if (!done.length) r.done.append(h('div', { class: 'd-none' }, 'Nothing delivered yet.'));
+    done.slice(0, 3).forEach((x, i) => r.done.append(h('div', { class: 'd-item' + (!firstTime && i === 0 ? ' fresh' : ''), title: 'Open this task', on: { click: () => openTasks(m.id, x.id) } },
+      h('span', { class: 'd-id' }, x.id), h('span', { class: 'd-title' }, x.title),
+      h('span', { class: 'd-meta', 'data-at': x.at }))));
+    for (const p of d.parked || []) r.asks.append(h('div', { class: 'w-item' }, h('b', null, p.id), p.why || p.title || 'waits for you'));
+    m.sig.done = dsig;
+  }
+  r.dcount.textContent = use.delivered ? `${use.delivered} with a session` + (use.median_minutes != null ? `, median ${use.median_minutes < 1 ? 'under a minute' : use.median_minutes + ' min'}` : '') : '';
+  tick(m);
+}
+
+// What changes every second without a new report: clocks, ages, the arc.
+function tick(m) {
+  const d = m.data, r = m.r, age = ageOf(m), info = d.info || {}, task = d.task;
+  const s = status(d, age);
+  if (!m.status || s.k !== m.status.k) { paint(m); return; }
+  const meta = [info.host || 'unknown machine', 'kit ' + (info.kit || '?')];
+  if (d.label && d.label !== project(d)) meta.unshift(project(d));     // a renamed runner still says what it is
+  if (info.started && s.k !== 'stopped') meta.push('up ' + long(since(m, info.started)));
+  if (meta.join('|') + !!m.fresh !== m.sig.meta) {
+    m.sig.meta = meta.join('|') + !!m.fresh;
+    r.meta.textContent = '';
+    for (const x of meta) r.meta.append(h('span', null, x));
+    if (m.fresh) r.meta.append(h('span', { class: 'tag rust fade' }, 'New'));
+  }
+  r.signal.textContent = s.k === 'stopped' ? 'last report ' + ago(age) : age > SILENT ? 'no signal for ' + long(age) : 'live';
+  for (const el of r.done.querySelectorAll('[data-at]')) el.textContent = ago(since(m, +el.dataset.at));
+  let cls = 'arc off', gone = 125.7;
+  if (r.clock && task && !task.started) { r.clock.textContent = ''; r.note.textContent = s.k === 'deciding' ? '' : 'starting'; }
+  if (r.clock && task && task.started && s.k !== 'deciding') {
+    const med = (d.usage || {}).median_minutes, run = since(m, task.started), usual = med == null ? 0 : Math.max(med, 0.5) * 60;
+    r.clock.textContent = span(run);
+    if (task.asleep) r.note.textContent = `asleep until ${clock(task.asleep.until + (d.skew || 0))}: ${task.asleep.why}`;
+    else r.note.textContent = usual ? `a task here takes ${med < 1 ? 'under a minute' : Math.round(med) + ' min'} at the median` : 'no finished task to compare with yet';
+    cls = 'arc' + (!usual ? ' unknown' : run > 3 * usual ? ' far' : run > 1.5 * usual ? ' over' : '');
+    gone = usual ? 125.7 * (1 - Math.min(1, run / usual)) : 0;
+  } else if (s.k === 'deciding') cls = 'arc unknown';
+  r.arc.setAttribute('class', cls);
+  r.gone.style.strokeDashoffset = cls.includes('unknown') ? 0 : gone;
+}
+
+// ---- the activity trace: output lines a second, over the last two minutes
+const INK = {};
+function inks() { const cs = getComputedStyle(document.documentElement); for (const k of ['teal', 'ink5', 'warm']) INK[k] = cs.getPropertyValue('--' + k).trim(); }
+function draw() {
+  if (!document.hidden) {
+    const t = performance.now();
+    for (const m of STATE.models.values()) {
+      const c = m.r && m.r.trace;
+      if (!c || !c.clientWidth || !m.el.isConnected) continue;
+      const ratio = devicePixelRatio || 1, w = c.clientWidth, ht = c.clientHeight;
+      if (c.width !== Math.round(w * ratio)) { c.width = Math.round(w * ratio); c.height = Math.round(ht * ratio); }
+      const g = c.getContext('2d');
+      g.setTransform(ratio, 0, 0, ratio, 0, 0); g.clearRect(0, 0, w, ht);
+      const SPAN = 120000, base = ht - 2.5;
+      m.hits = m.hits.filter((x) => t - x.at < SPAN + 2000);
+      g.strokeStyle = INK.ink5; g.lineWidth = 1; g.globalAlpha = 1;
+      g.beginPath(); g.moveTo(0, base + .5); g.lineTo(w, base + .5); g.stroke();
+      const live = m.status && m.status.live;
+      g.globalAlpha = 1; g.fillStyle = INK.teal; g.strokeStyle = INK.teal;
+      for (const x of m.hits) {
+        const px = w - (t - x.at) / SPAN * w, hgt = Math.min(base - 2, 3 + Math.sqrt(x.n) * 5.5), grow = Math.min(1, (t - x.at) / 260);
+        g.globalAlpha = .25 + .65 * (1 - (t - x.at) / SPAN);
+        g.fillRect(Math.round(px) - 1, base - hgt * grow, 2, hgt * grow);
+      }
+      if (live) {     // the head: a point that breathes where the present is
+        g.globalAlpha = .55 + .45 * Math.sin(t / 380);
+        g.beginPath(); g.arc(w - 3, base - 1, 2.4, 0, 6.3); g.fill();
+      }
+      g.globalAlpha = 1;
+    }
+  }
+  if (!REDUCED) requestAnimationFrame(draw); else setTimeout(draw, 1000);
+}
+
+// ---- the fleet
+const VITALS = [
+  ['work', 'At work', 'teal'], ['today', 'Delivered today', 'green'], ['rate', 'Finish rate', ''], ['per', 'Sessions a task', ''],
+  ['tok', 'Tokens', ''], ['cost', 'Spend at list price', 'rust'], ['asks', 'Waiting for you', ''],
+];
+function makeVitals() {
+  STATE.v = {};
+  for (const [k, lab, tone] of VITALS) {
+    const num = h('div', { class: 'v-num' }, '\u2014'), sub = h('div', { class: 'v-sub' });
+    const el = h('div', { class: 'vital ' + tone }, num, h('div', { class: 'v-lab' }, lab), sub);
+    STATE.v[k] = { num, sub, el };
+    $('vitals').append(el);
+  }
+}
+function fleet() {
+  const ms = [...STATE.models.values()], v = STATE.v, t = now();
+  const sum = (f) => ms.reduce((a, m) => a + (f(m.data) || 0), 0);
+  const known = (f) => ms.some((m) => f(m.data) != null);
+  const working = ms.filter((m) => atWork(m.status)).length;
+  const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+  let today = 0, day = 0;
+  const buckets = new Array(24).fill(0), hourNow = Math.floor(t / 3600);
+  for (const m of ms) for (const [at, n] of m.data.hours || []) {
+    // `at` is the start of an hour on the runner's clock. Its middle is used, so that a runner's clock a little
+    // ahead of or behind the dashboard's does not move the whole hour into its neighbour.
+    const when = at + 1800 + (m.data.skew || 0), back = hourNow - Math.floor(when / 3600);
+    if (when >= midnight.getTime() / 1000) today += n;
+    if (back >= 0 && back < 24) { buckets[23 - back] += n; day += n; }
+  }
+  const runs = sum((d) => (d.usage || {}).runs), fin = sum((d) => (d.usage || {}).finished);
+  const del = sum((d) => (d.usage || {}).delivered), sd = sum((d) => (d.usage || {}).sessions_delivered);
+  const asks = ms.flatMap((m) => (m.data.parked || []).map((p) => ({ m, p })));
+  roll(v.work.num, working); v.work.sub.textContent = ms.length ? `of ${plural(ms.length, 'runner')} on this page` : 'no runner has reported';
+  roll(v.today.num, today); v.today.sub.textContent = `${day} in the last 24 hours`;
+  roll(v.rate.num, share(fin, runs)); v.rate.sub.textContent = runs ? `${fin} of ${plural(runs, 'task run')} ended finished` : 'no task run recorded';
+  roll(v.per.num, del ? (sd / del).toFixed(2) : '\u2014'); v.per.sub.textContent = `${plural(sum((d) => (d.usage || {}).sessions), 'session')}, ${long(sum((d) => (d.usage || {}).minutes) * 60)} in session`;
+  roll(v.tok.num, known((d) => (d.usage || {}).tokens) ? tokens(sum((d) => (d.usage || {}).tokens)) : '\u2014'); v.tok.sub.textContent = 're-reads of cached context included';
+  roll(v.cost.num, known((d) => (d.usage || {}).cost) ? money(sum((d) => (d.usage || {}).cost)) : '\u2014'); v.cost.sub.textContent = 'as the agents report it';
+  roll(v.asks.num, asks.length); v.asks.sub.textContent = asks.length ? 'see below' : 'nothing';
+  v.asks.el.className = 'vital ' + (asks.length ? 'amber' : '');
+
+  // Delivered by the hour: bars are HTML, so the labels never stretch.
+  const bars = $('hours-bars'), top = Math.max(1, ...buckets);
+  if (bars.children.length !== 24) { bars.textContent = ''; for (let i = 0; i < 24; i++) bars.append(h('i')); }
+  buckets.forEach((n, i) => {
+    const b = bars.children[i], hr = new Date((hourNow - 23 + i) * 3600000);
+    b.className = (n ? '' : 'zero') + (i === 23 ? ' now' : '');
+    b.style.setProperty('--h', n ? Math.max(8, Math.round(100 * n / top)) + '%' : '0%');
+    b.title = `${pad(hr.getHours())}:00, ${plural(n, 'task')}`;
+  });
+  roll($('hours-total'), day);
+  const axis = $('hours-axis');
+  if (axis.dataset.h !== String(hourNow)) {
+    axis.dataset.h = hourNow; axis.textContent = '';
+    for (const back of [23, 18, 12, 6, 0]) axis.append(h('span', null, back ? pad(new Date((hourNow - back) * 3600000).getHours()) + ':00' : 'now'));
+  }
+
+  // What waits for the owner, across every runner
+  const sig = asks.map(({ m, p }) => m.id + label(m) + p.id + p.why).join('|');
+  if (sig !== STATE.askSig) {
+    STATE.askSig = sig;
+    $('asks-wrap').hidden = !asks.length;
+    $('asks').textContent = '';
+    for (const { m, p } of asks) $('asks').append(h('div', { class: 'item amber' },
+      h('div', { class: 'item-head' }, h('div', { class: 'item-title' }, p.id + '  ' + (p.title || '')), h('div', { class: 'item-tags' }, h('span', { class: 'tag amber' }, 'waiting'), h('span', { class: 'tag' }, label(m)))),
+      h('div', { class: 'item-why' }, p.why || 'No reason was written down.'),
+      h('div', { class: 'item-meta' }, h('a', { on: { click: () => openTasks(m.id, p.id) } }, 'Open the task \u2192'))));
+  }
+  document.body.classList.toggle('live', working > 0);
+  document.title = (working ? working + ' at work' : ms.length ? 'all quiet' : 'no runners') + ' \u00b7 Runner Watch';
+}
+
+// ---- where each runner sits: a pane while it works, a row below once it has stopped or gone quiet
+function place() {
+  const panes = $('panes'), rest = $('rest');
+  let shown = 0, below = 0;
+  for (const m of STATE.models.values()) try {
+    const age = ageOf(m), quiet = (m.data.state === 'stopped' || age > SILENT) && age > TO_REST && !STATE.pinned.has(m.id) && STATE.focus !== m.id;
+    if (!quiet) {
+      shown++;
+      // A pane is put on the page before its output is added: an element off the page cannot be scrolled to its foot.
+      if (!m.el) { makePane(m); m.sig = {}; panes.append(m.el); paint(m); addLines(m, m.buffer || [], true); m.buffer = null; }
+      if (m.el.parentNode !== panes) { panes.append(m.el); if (m.stick) m.r.tape.scrollTop = m.r.tape.scrollHeight; }
+      if (m.row) { m.row.remove(); m.row = null; }
+    } else {
+      below++;
+      if (m.el && m.el.isConnected) m.el.remove();
+      const d = m.data, info = d.info || {}, use = d.usage || {}, counts = d.counts || {};
+      const text = `${d.state === 'stopped' ? 'Stopped' : 'No report'}, last heard ${ago(age)}. ${counts.done ?? 0} of ${counts.total ?? 0} tasks done, ${plural(use.sessions || 0, 'session')}, ${money(use.cost)}.`;
+      if (!m.row) {
+        m.row = h('div', { class: 'item' },
+          h('div', { class: 'item-head' }, m.rowName = h('div', { class: 'item-title' }), h('div', { class: 'item-tags' }, h('span', { class: 'tag' }, d.state === 'stopped' ? 'stopped' : 'silent'), h('span', { class: 'tag' }, info.host || ''))),
+          m.rowWhy = h('div', { class: 'item-why' }),
+          h('div', { class: 'item-meta' }, h('a', { on: { click: () => openTasks(m.id) } }, 'Task list \u2192'), '   ', h('a', { on: { click: () => { STATE.pinned.add(m.id); LS.set('pinned', [...STATE.pinned]); place(); } } }, 'Show its pane')));
+        rest.append(m.row);
+      }
+      m.rowName.textContent = label(m);
+      m.rowWhy.textContent = text;
+    }
+  } catch (e) { console.error('The runner ' + m.id + ' could not be placed.', e); }
+  $('rest-wrap').hidden = !below;
+  $('none').hidden = shown > 0;
+  $('work-lede').hidden = shown === 0;
+}
+
+// A pane is as tall as what is left of the first screen below the figures, so one row of runners fills a display.
+function fit() {
+  const top = Math.round($('panes').getBoundingClientRect().top + scrollY);
+  if (top !== STATE.top) { STATE.top = top; document.documentElement.style.setProperty('--panes-top', top + 'px'); }
+}
+
+function focus(id) {
+  STATE.focus = id;
+  $('dim').classList.toggle('on', !!id);
+  document.body.style.overflow = id || STATE.sheet || STATE.help ? 'hidden' : '';
+  for (const m of STATE.models.values()) if (m.el) { m.el.classList.toggle('focus', m.id === id); if (m.stick) m.r.tape.scrollTop = m.r.tape.scrollHeight; }
+}
+
+// ---- asking the dashboard, once a second while anything is at work
+function apply(data) {
+  STATE.offset = data.now - Date.now() / 1000; STATE.back = false;
+  STATE.up = data.up; STATE.version = data.version || '';
+  if (data.home) { $('home').href = data.home; $('home').hidden = false; $('home-dot').hidden = false; }
+  const seen = new Set();
+  STATE.renaming = data.renaming !== false;
+  document.body.classList.toggle('fixed-names', !STATE.renaming);
+  for (const r of Array.isArray(data.runners) ? data.runners : []) {
+    if (!r || typeof r.id !== 'string') continue;
+    seen.add(r.id);
+    // The dashboard sends every runner in one shape, but one that still cannot be shown must not stop the others.
+    try { take(r); } catch (e) { console.error('The runner ' + r.id + ' could not be shown.', e); }
+  }
+  for (const [id, m] of STATE.models) if (!seen.has(id)) { if (m.el) m.el.remove(); if (m.row) m.row.remove(); STATE.models.delete(id); }
+  fleet(); fit(); place(); fit();
+  if (STATE.first) { STATE.first = false; const n = STATE.models.size; if (n) wire(`${plural(n, 'runner')} on this page, ${[...STATE.models.values()].filter((m) => atWork(m.status)).length} at work.`); }
+}
+function take(r) {
+  let m = STATE.models.get(r.id);
+  const born = !m;
+  if (born) { m = { id: r.id, seq: 0, buffer: [], hits: [], sig: {} }; STATE.models.set(r.id, m); }
+  const before = m.data;
+  m.data = r; m.at = Date.now(); m.seq = r.seq || 0; m.life = typeof r.life === 'string' ? r.life : '';
+  m.status = m.status || status(r, r.age || 0);
+  const name = label(m), lines = Array.isArray(r.lines) ? r.lines.filter((l) => Array.isArray(l) && typeof l[2] === 'string') : [];
+  if (born && !STATE.first) { m.spawn = m.fresh = true; setTimeout(() => { m.spawn = false; if (m.el) m.el.classList.remove('spawn'); }, 1200); setTimeout(() => { m.fresh = false; }, 11000); wire(`${name} came on watch from ${(r.info || {}).host || 'its machine'}.`); }
+  if (before) news(m, before, r, name);
+  if (m.el) { paint(m); addLines(m, lines, r.reset); }
+  else { if (r.reset) m.buffer = []; m.buffer = (m.buffer || []).concat(lines).slice(-KEEP_LINES); m.status = status(r, r.age || 0); }
+}
+function news(m, a, b, name) {
+  const ta = a.task && a.task.id, tb = b.task && b.task.id, sa = status(a, 0).k, sb = status(b, 0).k;
+  const got = (b.delivered || [])[0], had = (a.delivered || [])[0];
+  if (got && (!had || got.id !== had.id || got.at !== had.at)) {
+    wire(`${name} delivered ${got.id}: ${got.title}`);
+    m.cheer = true; setTimeout(() => { m.cheer = false; if (m.el) m.el.classList.remove('cheer'); }, 2600);
+  }
+  if (tb && tb !== ta && b.state === 'running') wire(`${name} took up ${tb}: ${b.task.title || ''}`);
+  if (sb !== sa) {
+    if (sb === 'stopped') wire(`${name} has stopped.`);
+    else if (sb === 'paused') wire(`${name} paused itself. ${b.note || ''}`);
+    else if (sb === 'deciding') wire(`${name}: task ${tb} stopped, and a stop session is deciding what to do.`);
+    else if (sb === 'waiting') wire(`${name} waits for you on ${plural((b.counts || {}).parked, 'task')}.`);
+    else if (sb === 'idle' && sa !== 'waiting') wire(`${name} has run its queue and is idle.`);
+  }
+  if ((b.counts || {}).parked > ((a.counts || {}).parked || 0) && sb === sa) wire(`${name} parked a task for you.`);
+}
+
+let timer = null, asking = false;
+async function poll() {
+  if (asking) return;
+  asking = true; clearTimeout(timer);
+  const at = [...STATE.models.values()].map((m) => m.id + ':' + m.seq + ':' + (m.life || '')).join(',');
+  try {
+    const res = await fetch(BASE + 'api/poll?since=' + encodeURIComponent(at), { cache: 'no-store' });
+    if (!res.ok) throw new Error('the dashboard answered ' + res.status);
+    apply(await res.json());
+    STATE.lastOk = Date.now(); STATE.failing = '';
+  } catch (e) {
+    STATE.failing = e.message || 'no answer';
+  }
+  asking = false;
+  heartbeat();
+  const busy = [...STATE.models.values()].some((m) => m.status && atWork(m.status));
+  timer = setTimeout(poll, document.hidden ? 15000 : STATE.failing ? 4000 : busy ? 1000 : 2500);
+}
+
+// The page's own pulse: the clock, each pane's clocks, the link to the dashboard, the wire's turn.
+function heartbeat() {
+  const d = new Date(), zone = (d.toLocaleTimeString('en-GB', { timeZoneName: 'short' }).split(' ').pop() || '');
+  $('clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${zone}`;
+  const quiet = STATE.lastOk ? (Date.now() - STATE.lastOk) / 1000 : Infinity, link = $('link'), stamp = $('stamp');
+  if (!STATE.lastOk) { link.className = 'conn ' + (STATE.failing ? 'error' : 'unknown'); $('link-text').textContent = STATE.failing ? 'Dashboard unreachable' : 'Connecting'; }
+  // A page that is hidden asks less often, by its own choice: only a question that failed, or a long silence, is "no answer".
+  else if (!STATE.failing && quiet < 45) { link.className = 'conn fresh'; $('link-text').textContent = 'Live'; }
+  else { link.className = 'conn ' + (quiet < 30 ? 'stale' : 'error'); $('link-text').textContent = 'No answer for ' + (quiet < 90 ? Math.round(quiet) + 's' : long(quiet)); }
+  link.title = STATE.failing ? 'The page cannot reach the dashboard: ' + STATE.failing : 'The page asks the dashboard for news once a second';
+  if (STATE.lastOk) {
+    const last = new Date(STATE.lastOk);
+    stamp.textContent = `Updated ${pad(last.getHours())}:${pad(last.getMinutes())}:${pad(last.getSeconds())} ${zone} \u00b7 dashboard up ${long(STATE.up)} \u00b7 runner-kit ${STATE.version}`;
+    stamp.className = 'stamp' + (STATE.failing ? ' error' : '');
+  }
+  for (const m of STATE.models.values()) if (m.el && m.el.isConnected) tick(m);
+  if (STATE.wire.length > 1 && Date.now() - STATE.wireAt > 7000) showWire(((STATE.wireI || 0) + 1) % Math.min(STATE.wire.length, 5));
+}
+
+// ---- the task list
+function words(text, find) {
+  // Plain text with `code` spans and the found word marked: built from text nodes, never from HTML.
+  const out = [];
+  String(text).split(/(`[^`\n]+`)/).forEach((part) => {
+    if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) { out.push(h('code', null, part.slice(1, -1))); return; }
+    if (!find) { out.push(part); return; }
+    let i = 0; const low = part.toLowerCase();
+    for (let at = low.indexOf(find); at !== -1; at = low.indexOf(find, i)) { out.push(part.slice(i, at), h('mark', null, part.slice(at, at + find.length))); i = at + find.length; }
+    out.push(part.slice(i));
+  });
+  return out;
+}
+const LABELS = /^(Files|Build|Done when|Owner sees|Observed|Needs|Depends on|Kept in the run order|Ordered by[^:.]*|G\d+(?:, ?G\d+)*):/;
+function body(text, find) {
+  const box = h('div', { class: 'task-body' });
+  const paras = String(text || '').split(/\n{2,}/).filter((p) => p.trim());
+  if (!paras.length) box.append(h('p', null, 'This task has no text under its heading.'));
+  for (const para of paras) for (const ln of para.split('\n')) {
+    const m = LABELS.exec(ln);
+    box.append(h('p', null, m ? h('span', { class: 'lab' }, m[1]) : null, words(m ? ln.slice(m[0].length).trimStart() : ln, find)));
+  }
+  return box;
+}
+async function openTasks(id, taskId) {
+  const m = STATE.models.get(id);
+  STATE.sheet = { id, tab: taskId ? 'all' : 'queue', find: '', want: taskId || '', shown: 150, data: null };
+  if (location.hash !== '#tasks=' + id) history.replaceState(null, '', '#tasks=' + id);
+  $('sheet-back').classList.add('on'); document.body.style.overflow = 'hidden';
+  const sheet = $('sheet'); sheet.textContent = '';
+  sheet.append(h('div', { class: 'sheet-head' }, h('div', { class: 'sheet-top' }, h('div', null, h('span', { class: 'kicker' }, 'Task list'), h('div', { class: 'sheet-title' }, m ? label(m) : id), h('div', { class: 'sheet-sub' }, 'Fetching the task file.')), h('button', { class: 'icon', type: 'button', 'aria-label': 'Close', on: { click: closeSheet } }, '\u00d7')), h('div', { class: 'sheet-bar' })), h('div', { class: 'sheet-body' }));
+  try {
+    const res = await fetch(BASE + 'api/tasks?id=' + encodeURIComponent(id), { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status === 404 ? 'The dashboard holds no task file for this runner yet.' : 'The dashboard answered ' + res.status + '.');
+    const data = await res.json();
+    if (!STATE.sheet || STATE.sheet.id !== id) return;
+    STATE.sheet.data = data;
+    if (!taskId && !(data.queue || []).some((q) => (data.tasks.find((t) => t.id === q) || {}).status !== 'done')) STATE.sheet.tab = 'all';
+    drawSheet();
+  } catch (e) {
+    if (STATE.sheet && STATE.sheet.id === id) sheet.querySelector('.sheet-sub').textContent = e.message;
+  }
+}
+function closeSheet() {
+  STATE.sheet = null; $('sheet-back').classList.remove('on');
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  document.body.style.overflow = STATE.focus ? 'hidden' : '';
+}
+function kind(t, data) {
+  if (t.id === data.hand) return 'hand';
+  if (t.status === 'done') return 'done';
+  if (hasOwn(data.parked, t.id)) return 'parked';
+  if (t.status === 'held') return 'held';
+  return t.letter ? 'open' : 'owner';
+}
+function drawSheet() {
+  const S = STATE.sheet, data = S.data, sheet = $('sheet');
+  const tasks = data.tasks || [], order = data.queue || [], inQueue = new Set(order);
+  const k = (t) => kind(t, data);
+  const sets = {
+    queue: tasks.filter((t) => inQueue.has(t.id) && k(t) !== 'done').sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)),
+    todo: tasks.filter((t) => k(t) !== 'done'),
+    asks: tasks.filter((t) => k(t) === 'parked' || k(t) === 'owner' || k(t) === 'held'),
+    done: tasks.filter((t) => k(t) === 'done').reverse(),
+    all: tasks,
+  };
+  const find = S.find.trim().toLowerCase(), doneN = sets.done.length;
+  const tabs = [['queue', 'Left in the queue'], ['todo', 'Not done'], ['asks', 'Yours'], ['done', 'Done'], ['all', 'All']];
+  const input = h('input', { class: 'find', type: 'search', placeholder: 'Find in the tasks', value: S.find, 'aria-label': 'Find in the tasks', on: { input: (e) => { S.find = e.target.value; S.shown = 150; drawList(); } } });
+  const listBox = h('div');
+  function drawList() {
+    const f = S.find.trim().toLowerCase();
+    let rows = sets[S.tab] || tasks;
+    if (f) rows = rows.filter((t) => (t.id + ' ' + t.title + ' ' + t.body + ' ' + t.note).toLowerCase().includes(f));
+    listBox.textContent = '';
+    if (!rows.length) listBox.append(h('p', { class: 'empty' }, f ? 'No task here has those words.' : S.tab === 'queue' ? 'Nothing is left in the queue.' : S.tab === 'asks' ? 'Nothing waits for you.' : 'No tasks.'));
+    for (const t of rows.slice(0, S.shown)) {
+      const state = k(t), open = t.id === S.want;
+      const row = h('div', { class: 'task' + (open ? ' open' : ''), 'data-task': t.id },
+        h('div', { class: 'task-head', on: { click: () => { row.classList.toggle('open'); if (row.classList.contains('open') && !row.querySelector('.task-body')) row.append(body(t.body, f)); } } },
+          h('span', { class: 'glyph ' + state, title: { done: 'done', hand: 'in hand', parked: 'waits for the owner', held: 'built, held', owner: 'the owner\'s own task', open: 'not started' }[state] }),
+          h('span', { class: 'task-id' }, t.id),
+          h('div', null, h('div', { class: 'task-title' }, words(t.title, f)),
+            h('div', { class: 'task-tags' },
+              state === 'hand' ? h('span', { class: 'tag' }, 'in hand') : null,
+              state === 'parked' ? h('span', { class: 'tag amber' }, 'waits for you') : null,
+              state === 'held' ? h('span', { class: 'tag amber' }, 'built, held') : null,
+              state === 'owner' ? h('span', { class: 'tag' }, 'yours') : null,
+              t.letter ? h('span', { class: 'tag' }, 'M ' + t.letter + ' ' + t.effort) : null,
+              t.reviewer ? h('span', { class: 'tag' }, 'R ' + t.reviewer) : null,
+              t.commit ? h('span', { class: 'tag num' }, t.commit.slice(0, 9)) : null,
+              inQueue.has(t.id) && state !== 'done' ? h('span', { class: 'tag' }, 'queue ' + (order.indexOf(t.id) + 1)) : null))));
+      if (open || (f && (t.body || '').toLowerCase().includes(f) && rows.length <= 12)) { row.classList.add('open'); row.append(body(state === 'parked' && hasOwn(data.parked, t.id) && data.parked[t.id] ? t.body + '\n\nWaiting: ' + data.parked[t.id] : t.body, f)); }
+      listBox.append(row);
+    }
+    if (rows.length > S.shown) listBox.append(h('button', { class: 'tool more', type: 'button', on: { click: () => { S.shown += 300; drawList(); } } }, `Show more: ${rows.length - S.shown} to go`));
+    if (S.want) { const el = listBox.querySelector('[data-task="' + CSS.escape(S.want) + '"]'); S.want = ''; if (el) requestAnimationFrame(() => el.scrollIntoView({ block: 'center' })); }
+  }
+  sheet.textContent = '';
+  sheet.append(
+    h('div', { class: 'sheet-head' },
+      h('div', { class: 'sheet-top' },
+        h('div', null, h('span', { class: 'kicker' }, 'Task list'), h('div', { class: 'sheet-title' }, STATE.models.has(S.id) ? label(STATE.models.get(S.id)) : data.project || S.id),
+          h('div', { class: 'sheet-sub' }, `${plural(tasks.length, 'task')}: ${doneN} done, ${tasks.length - doneN} to do. ${plural(order.length, 'task')} in the queue. `, h('a', { href: BASE + 'api/tasks.md?id=' + S.id, target: '_blank', rel: 'noopener' }, 'TASKS.md as written'))),
+        h('button', { class: 'icon', type: 'button', 'aria-label': 'Close', on: { click: closeSheet } }, '\u00d7')),
+      h('div', { class: 'sheet-bar' },
+        h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([key, lab]) => h('button', { class: 'tab' + (S.tab === key ? ' on' : ''), type: 'button', role: 'tab', on: { click: () => { S.tab = key; S.shown = 150; drawSheet(); } } }, lab, h('span', { class: 'n' }, sets[key].length)))),
+        input)),
+    h('div', { class: 'sheet-body' }, listBox));
+  drawList();
+  if (find) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+}
+
+// ---- the light and the dark sheet
+function theme(name) {
+  document.documentElement.dataset.theme = name; LS.set('theme', name);
+  document.querySelector('meta[name="theme-color"]').content = name === 'dark' ? '#14110d' : '#faf8f3';
+  inks();
+}
+
+// ---- wiring
+$('theme').addEventListener('click', () => theme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+const help = (on) => { STATE.help = on; $('help-back').classList.toggle('on', on); };
+$('help-open').addEventListener('click', () => help(true));
+$('help-close').addEventListener('click', () => help(false));
+$('help-back').addEventListener('click', (e) => { if (e.target === $('help-back')) help(false); });
+$('sheet-back').addEventListener('click', (e) => { if (e.target === $('sheet-back')) closeSheet(); });
+$('dim').addEventListener('click', () => focus(null));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { if (STATE.help) help(false); else if (STATE.sheet) closeSheet(); else if (STATE.focus) focus(null); return; }
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+  const shown = [...STATE.models.values()].filter((m) => m.el && m.el.isConnected);
+  if (e.key === '?') help(!STATE.help);
+  else if (e.key === 'd') theme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+  else if (e.key === 'f' && shown.length) focus(STATE.focus ? null : shown[0].id);
+  else if (e.key === 't' && shown.length) STATE.sheet ? closeSheet() : openTasks(STATE.focus || shown[0].id);
+  else if (/^[1-9]$/.test(e.key) && shown[e.key - 1]) focus(STATE.focus === shown[e.key - 1].id ? null : shown[e.key - 1].id);
+});
+const fromHash = () => { const m = /^#tasks=([A-Za-z0-9_.-]+)/.exec(location.hash); if (m && (!STATE.sheet || STATE.sheet.id !== m[1])) openTasks(m[1]); };
+addEventListener('hashchange', fromHash);
+document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a[href^="#tasks="]'); if (a) { e.preventDefault(); openTasks(a.getAttribute('href').slice(7)); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { STATE.back = true; poll(); } });
+addEventListener('resize', fit);
+
+theme(LS.get('theme', 'light') === 'dark' ? 'dark' : 'light');
+makeVitals(); heartbeat(); fleet(); place();
+setInterval(heartbeat, 1000);
+poll().then(fromHash);
+draw();
+})();
+</script>
+</body>
+</html>

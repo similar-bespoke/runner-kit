@@ -1,6 +1,7 @@
 #!/usr/bin/env zsh
 # Check a machine, and optionally one project's settings, before a queue runs.
-#   runner-doctor                 the kit's requirements and the agents found
+#   runner-doctor                 the kit's requirements, the agents found and
+#                                 the dashboard this machine's runners report to
 #   runner-doctor <runner.conf>   also that project's settings and hooks
 # One line per fact: "ok", "MISSING" or "WARN". Exit 0 when nothing is MISSING.
 # It changes nothing.
@@ -28,7 +29,21 @@ for f in "$KIT"/adapters/*.sh(N); do
 done
 (( $#SIGNED )) || bad "at least one supported agent installed and signed in"
 
-if [ -n "${1:-}" ]; then
+# The dashboard a runner started here would report to (bin/runner_report.py),
+# asked with the same python3 the runner uses. None set is not a fault.
+dashboard() {
+  local said rc=0
+  said="$(python3 "$BIN/runner_report.py" --check 2>&1)" || rc=$?
+  case $rc in
+    0) ok "dashboard $said";;
+    3) ok "dashboard: ${said#none: }; runners here are not shown on one";;
+    *) warn "dashboard $said. Runners carry on without it. On macOS the system's own python3 can be refused the local network: put another python3 first on the PATH, or allow it under Privacy & Security.";;
+  esac
+}
+
+if [ -z "${1:-}" ]; then
+  ( unset RUNNER_CONF; cd /; dashboard )
+else
   [ -f "$1" ] || { bad "settings file $1"; exit 1; }
   export RUNNER_CONF="${1:A}"; source "$RUNNER_CONF"
   [ -n "${PROJECT:-}" ] && ok "PROJECT=$PROJECT" || bad "PROJECT is empty"
@@ -52,6 +67,7 @@ if [ -n "${1:-}" ]; then
     command) [ -n "${NOTIFY_CMD:-}" ] && ok "NOTIFY=command" || bad "NOTIFY=command needs NOTIFY_CMD";;
     *) bad "NOTIFY must be none, desktop or command (it is $NOTIFY)";;
   esac
+  dashboard
   USABLE=()
   for var in ${(k)parameters[(I)ADAPTER_[A-Z]]}; do
     L="${var#ADAPTER_}"; A="${(P)var}"; MV="MODEL_$L"; M="${(P)MV:-}"

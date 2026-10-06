@@ -44,6 +44,7 @@ How to read these numbers:
 - **A record of what each session used** (`runs/usage.log`): minutes, turns, tokens and cost per session, beside its letter and effort, so the cost of a choice of model can be seen and not guessed.
 - **Adapters** (`adapters/`): one file per agent. Claude Code and Codex are included; `adapters/TEMPLATE.sh` is the contract for adding another.
 - **Notifiers** (`notify/`): log only, a desktop notice, or your own command.
+- **A dashboard** (`dashboard/`): one page for every runner at work, with what each has delivered, its live output and its task list. A runner reports to it by itself once the machine's settings name it, and carries on if it cannot be reached.
 
 The person the work is for is called the owner. The owner sets outcomes and answers product questions once, in writing. Everything else is delegated.
 
@@ -61,12 +62,49 @@ To check a machine by hand: `bin/runner-doctor`. To run the self-test by hand: `
 - tmux, to run the queue unattended
 - At least one supported agent command-line tool, installed and signed in: Claude Code (`claude`) or Codex (`codex`)
 
+## Watching the runners
+
+`dashboard/serve.py` serves one page that shows every runner reporting to it: the task in hand and how long it has run, what has been delivered, what waits for the owner, what the sessions used, the output as it is written, and the task file. A runner that starts gets its own pane on the page without a reload. Start the dashboard on one machine:
+
+```
+python3 dashboard/serve.py --port 8787 --token-file <a file holding a token>
+```
+
+Started like that it answers on its own machine only (127.0.0.1). To let other machines and a phone reach it, put it behind what already serves your network: a reverse proxy, or a tunnel, either of which also gives it https. Tell it the name it is then reached by, with `--allow-host <name>`; it refuses a name it was not told about, which is what stops a page on another site from questioning it through your browser. `--host <address>` makes it listen on the network itself, over plain http, where the token and everything runners send can be read on the way: do that only on a network you trust.
+
+Then name it once on each machine that runs tasks, in `~/.config/runner-kit/dashboard.conf`, readable by its owner only:
+
+```
+DASHBOARD_URL=https://<the name it is reached by>
+DASHBOARD_TOKEN=<the token>
+```
+
+From then on every queue and every task started on that machine reports by itself; no project needs a setting. `bin/runner-doctor` says whether the dashboard can be reached. A project can name another dashboard, or `off`, as `DASHBOARD_URL` in its `runner.conf`.
+
+Two things on the page are there to help you find your way back to the work:
+
+- **A name of your own.** The pencil beside a runner's name lets you call it what you like. The dashboard keeps the name, so every device shows it, and the project's own name stays in the line beneath.
+- **The agent session behind the runner.** Under the name is the identifier of the agent session doing the work, as Claude Code or Codex knows it, read from the runner's logs. Clicking it copies the command that opens that session again (`claude --resume <id>` or `codex resume <id>`). A supervising session that runs `bin/runner_report.py --in-charge` from the workspace is named there too, as the session in charge. Neither agent documents a link that opens a session by its identifier, so the page copies the command and does not pretend to open anything.
+
+Five things to know before you use it:
+
+- Nothing a runner does waits for the dashboard. A runner that cannot reach it says so in `runs/queue.log`, at most once an hour, and carries on. It follows no redirect, so its token goes to the address you set and to no other.
+- What cannot arrive is named. Where a runner's state reaches the dashboard and one of its files does not (something on the way takes small requests only, say), the runner's pane says which file and why. The rest still arrives, the logs go in smaller pieces, and the file is tried again less and less often.
+- The page is a view of the workspace's files, not a record. `TASKS.md` and the logs stay the truth.
+- Reading needs no token. What runners send, their output and task files included, is shown to everyone who can open the page, so put it on a network you trust. The token guards what runners send; a name can be given on the page by anyone who can open it, unless the dashboard is started with `--no-renaming`.
+- The page asks Google Fonts for its two typefaces, so each device that opens it makes that one request outside your network. Without them it falls back to the device's own.
+
+The dashboard takes a report of up to 2 MB as sent and 4 MB unpacked, holding at most 20,000 values, and has at most 64 callers in hand at once. A caller that keeps it waiting gives up its place when all are taken, so callers that connect and say nothing cannot shut the others out. A sender it refuses is told why. It is a small program for a network you trust: against a flood of real requests it has no defence, and a network you do not trust wants a proxy in front of it that is made for that.
+
+`dashboard/service-macos.sh` keeps the dashboard running on a Mac. `selftest/dashboard.py` proves fifty-four facts about the dashboard and the reporter on one machine, spending nothing: what one runner, one page or one stranger must not be able to do to the others. Nineteen things those facts rest on were each taken out of a copy of the kit, and each time the facts that prove it failed.
+
 ## What is proven and what is not
 
 `manifest.yaml` holds the full record, under `adapters` and `status`. In short:
 
-- **Proven, on macOS, with the Claude Code adapter:** the self-test passes, all fourteen lines. One real task runs to its commit with one reviewer, under the five-tool list. Every commit check refuses the change it exists to refuse, and a clean commit is accepted. With a stand-in session that spends nothing, the runner's own logic is proven: the done test, the project's check sending a session back, a stop session, parking and release, the pause after three stops, the stop file. Each of those lines was also shown to fail when its behaviour is switched off. The queue has also run one real task from start to finish.
+- **Proven, on macOS, with the Claude Code adapter:** the self-test passes, all fifteen lines. One real task runs to its commit with one reviewer, under the five-tool list. Every commit check refuses the change it exists to refuse, and a clean commit is accepted. With a stand-in session that spends nothing, the runner's own logic is proven: the done test, the project's check sending a session back, a stop session, parking and release, the pause after three stops, the stop file. Each of those lines was also shown to fail when its behaviour is switched off. The queue has also run one real task from start to finish.
 - **Experimental: the Codex adapter.** Its review step can be refused by Codex's own approval reviewer, and its resume and failure handling through the runner are untested. Nothing has been run through the adapter file as it stands in this kit.
+- **Proven on one machine only: the dashboard.** A task and a queue each report to a dashboard started beside them, and the page shows them; that is line (o) of the self-test and a run by hand against copies of two real workspaces. A runner on one machine reporting to a dashboard on another has not been run, and neither has the page in Safari or on a phone.
 - **Not proven:** Linux; a stop session and a resumed session with a real agent (both are proven only with the stand-in); usage-limit and network-error handling; `CHECK_CMD` against a real project's test suite; a project with more than one code repository; the `deploy.sh` skeleton against a real host.
 
 Task sessions run unattended and may run shell commands in the repositories you name. Read `PROTOCOL.md` before you start a queue.

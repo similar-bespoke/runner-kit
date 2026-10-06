@@ -14,6 +14,11 @@
 #       failing is reported once; a stopped task is parked and released only
 #       by the owner; three different tasks stopping in a row pause the queue
 #   (n) the configured notifier delivered a message
+#   (o) a task run by hand and a queue each report themselves to a dashboard
+#       started here on this machine (dashboard/serve.py), and stop reporting
+#       when they end
+# Every other line runs with the dashboard switched off, so the toy project
+# never appears on a dashboard the machine is set to report to.
 # Standard output is exactly one line per fact, then one final line:
 #   SELFTEST: PASS      all proven                            (exit 0)
 #   SELFTEST: PARTIAL   (b) skipped with --no-agent, rest ok  (exit 2)
@@ -202,6 +207,9 @@ G1: the list can be read at a glance. Files: src/notes.txt. Run by the stand-in 
 
 ### 4.4 A task that waits behind three stops [ ]  M: T medium, R: T medium
 G1: the list can be read at a glance. Files: src/notes.txt. Run by the stand-in session.
+
+### 6.1 A task a dashboard is told about [ ]  M: T medium, R: T medium
+G1: the list can be read at a glance. Files: src/notes.txt. Run by the stand-in session.
 MD
   : > "$WS/REVIEW-STUB.md"
   cat > "$T/stub-session.zsh" <<'STUB'
@@ -227,7 +235,7 @@ if [[ "$STUB_PROMPT" == *"You are the supervising session for"* ]]; then
   exit 0
 fi
 case "$ID" in
-  2.1|2.3|4.4) print -r -- "$ID" >> "$APP/src/notes.txt"; commit_app "a note"; mark_done;;
+  2.1|2.3|4.4|6.1) print -r -- "$ID" >> "$APP/src/notes.txt"; commit_app "a note"; mark_done;;
   2.2) if [ "$STUB_MODE" = start ]; then
          : > "$APP/src/BROKEN"; commit_app "a change that breaks the check"; mark_done
        else
@@ -249,6 +257,7 @@ STUB
   git -C "$WS" add -A && git -C "$WS" commit -q -m "toy workspace"
 } >> "$OUT" 2>&1 || { print -r -- "FAIL (setup) the toy project could not be built; see $OUT"; print "SELFTEST: FAIL"; exit 1; }
 export RUNNER_CONF="$WS/runner.conf"
+export RUNNER_DASHBOARD_URL=off   # only (o) reports, and only to the dashboard it starts
 export STUB_SCRIPT="$T/stub-session.zsh"
 unset RUNNER_TASK_ID
 QLOG="$WS/runs/queue.log"
@@ -466,6 +475,84 @@ elif [ $AGENT = 1 ] && [ $SKIPPED = 0 ] && ! grep -q "task 1.1 done" "$WS/runs/n
 else
   pass n "the configured notifier delivered a message"
 fi
+
+# ---- (o) a task run by hand, and then a queue, report themselves to a dashboard
+note ""; note "==== (o) task 6.1 by hand, then a queue pass, with a dashboard started on this machine"
+print -r -- "selftest-token" > "$T/dash.token"
+python3 "$KIT/dashboard/serve.py" --port 0 --state-dir "$T/dash" --token-file "$T/dash.token" > "$T/dash.out" 2>> "$OUT" &
+DPID=$!
+n=0; while ! grep -q "runner dashboard on" "$T/dash.out" 2>/dev/null && [ $n -lt 100 ]; do sleep 0.1; n=$((n+1)); done
+DURL="$(sed -n 's|.*\(http://127\.0\.0\.1:[0-9]*\)/.*|\1|p' "$T/dash.out" | head -1)"
+cat > "$T/dash-check.py" <<'PY'
+"""What the dashboard at <url> shows for the toy project, against what a <task|queue> run should have left there.
+Prints one word per fault; nothing when all is as it should be."""
+import glob, json, re, sys, time, urllib.error, urllib.request
+url, want, runs = sys.argv[1], sys.argv[2], sys.argv[3]
+get = lambda path: json.load(urllib.request.urlopen(url + path, timeout=5))
+def post(path, body, **headers):
+    """The status and the answer of a POST of one JSON object."""
+    request = urllib.request.Request(url + path, json.dumps(body).encode(), {"Content-Type": "application/json", **headers})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as answer:
+            return answer.status, json.load(answer)
+    except urllib.error.HTTPError as refused:
+        return refused.code, {}
+r, texts = None, []
+for _ in range(100):      # the last report comes once the runner has ended
+    r = next((x for x in get("/api/poll")["runners"] if (x.get("info") or {}).get("project") == "selftest"), None)
+    texts = [(line[1], line[2]) for line in r["lines"]] if r else []
+    if r and r["state"] == "stopped" and r["info"]["mode"] == want and (want == "task" or any("queue pass done" in t for _, t in texts)):
+        break
+    time.sleep(0.2)
+bad = []
+if not r:
+    bad.append("no-runner")
+else:
+    if r["state"] != "stopped": bad.append("not-shown-as-stopped")
+    if r["info"]["mode"] != want: bad.append("reported-by-%s-not-%s" % (r["info"]["mode"], want))
+    if not any(d["id"] == "6.1" for d in r["delivered"]): bad.append("delivery-missing")
+    if want == "task" and ("o", "result for task 6.1: OK") not in texts: bad.append("output-missing")
+    if want == "queue" and not any(k == "q" and "queue pass done" in t for k, t in texts): bad.append("queue-log-missing")
+    tasks = {t["id"]: t["status"] for t in get("/api/tasks?id=" + r["id"])["tasks"]}
+    if tasks.get("6.1") != "done" or tasks.get("1.2") != "open": bad.append("task-file-wrong")
+    # the agent session at the task is named by the identifier in the runner's own log
+    said = re.findall(r"(?m)^attempt \d+ of \d+: new session (\S+)", open(sorted(glob.glob(runs + "/6.1-*.log"))[-1]).read())
+    work = (r.get("sessions") or {}).get("work") or {}
+    if not said or work.get("id") != said[-1] or work.get("agent") != "stub" or work.get("task") != "6.1": bad.append("session-at-the-task-wrong")
+    charge = (r.get("sessions") or {}).get("charge") or {}
+    if want == "queue" and (charge.get("id"), charge.get("agent")) != ("selftest-supervising-session", "codex"): bad.append("session-in-charge-wrong")
+    if want == "task" and charge: bad.append("a-session-in-charge-nobody-recorded")
+    if want == "queue":       # a name given on the page is kept, tidied, and can be taken back; another site cannot give one
+        label = lambda: next(x["label"] for x in get("/api/poll")["runners"] if x["id"] == r["id"])
+        if post("/api/name", {"id": r["id"], "name": "  The toy\tlist  "})[0] != 200 or label() != "The toy list": bad.append("name-not-kept")
+        if post("/api/name", {"id": r["id"], "name": "Hijacked"}, **{"Sec-Fetch-Site": "cross-site"})[0] != 403 or label() != "The toy list": bad.append("name-taken-from-another-site")
+        if post("/api/name", {"id": "nobody12", "name": "x"})[0] != 404: bad.append("name-for-an-unknown-runner")
+        if post("/api/name", {"id": r["id"], "name": ""})[0] != 200 or label() != "": bad.append("name-not-taken-back")
+code = post("/api/ingest", {"id": "intruder1"})[0]
+if code != 401: bad.append("a-report-without-the-token-got-%d" % code)
+print(" ".join(bad))
+PY
+reporter_gone() { local n=0; while [ -d "$WS/runs/report.lock" ] && [ $n -lt 60 ]; do sleep 0.2; n=$((n+1)); done; [ ! -d "$WS/runs/report.lock" ]; }
+O_BAD=""
+if [ -z "$DURL" ]; then O_BAD=" dashboard-did-not-start"
+else
+  ( cd "$WS" && RUNNER_DASHBOARD_URL="$DURL" RUNNER_DASHBOARD_TOKEN="selftest-token" "$BIN/run_task.sh" 6.1 2 ) >> "$OUT" 2>&1; RC=$?
+  O_TASK="$(python3 "$T/dash-check.py" "$DURL" task "$WS/runs" 2>> "$OUT")" || O_TASK="check-crashed"
+  [ $RC = 0 ] && [ -z "$O_TASK" ] || O_BAD+=" by-hand(exit-$RC ${O_TASK})"
+  reporter_gone || O_BAD+=" task-reporter-still-running"
+  # a supervising session says it is in charge, as PROTOCOL.md section 10 asks of one when it starts
+  ( cd "$WS" && python3 "$BIN/runner_report.py" --in-charge --agent codex --session selftest-supervising-session ) >> "$OUT" 2>&1 || O_BAD+=" in-charge-not-recorded"
+  print -r -- 6.1 > "$T/order-o"
+  ( cd "$WS" && RUNNER_DASHBOARD_URL="$DURL" RUNNER_DASHBOARD_TOKEN="selftest-token" QUEUE_ONCE=1 QUEUE_ORDER="$T/order-o" "$BIN/run_queue.sh" ) >> "$OUT" 2>&1
+  O_QUEUE="$(python3 "$T/dash-check.py" "$DURL" queue "$WS/runs" 2>> "$OUT")" || O_QUEUE="check-crashed"
+  [ -z "$O_QUEUE" ] || O_BAD+=" queue(${O_QUEUE})"
+  reporter_gone || O_BAD+=" queue-reporter-still-running"
+  grep -q "dashboard: reporting to $DURL" "$QLOG" || O_BAD+=" queue-log-does-not-say-it-reports"
+fi
+kill $DPID 2>/dev/null
+note "dashboard at ${DURL:-nowhere}: ${O_BAD:- nothing wrong}"
+if [ -z "$O_BAD" ]; then pass o "a task run by hand and a queue each reported themselves to a dashboard, with their output, what was delivered, the task file, the agent session at the task and the session in charge; a report without the token was refused; a name given to the runner was kept and one sent from another site refused; each reporter ended with its runner"
+else fail o "reporting to a dashboard went wrong:$O_BAD"; fi
 
 if [ $FAILED = 1 ]; then print "SELFTEST: FAIL"; exit 1; fi
 [ $KEEP = 1 ] || [ -n "$BASE" ] || rm -rf "$T"

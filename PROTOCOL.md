@@ -35,7 +35,7 @@ All in one workspace directory, under git.
 | `REVIEW-<ADAPTER>.md` | The reviewer step for each agent, placed into the session prompt. |
 | `SUPERVISOR-PROMPT.md` | The first message of every stop session. |
 | `runner.conf` | The project's settings (`<kit>/schema/runner.conf.schema.json`). |
-| `runs/` | Logs, the queue log, the notice log, parked tasks (`waiting/<id>`), the live commit (`live-sha`). Not hand-edited, not in git. |
+| `runs/` | Logs, the queue log, the notice log, parked tasks (`waiting/<id>`), the live commit (`live-sha`), and the lock and log of the program that reports to a dashboard (`report.lock`, `report.log`). Not hand-edited, not in git. |
 | `deploy.sh` | The only way anything goes live (section 9). Absent in a project that does not deploy. |
 | `HANDOFF-<date>.md` | State and a prompt for the next supervising session. |
 
@@ -157,7 +157,7 @@ A commit recording a decision signed `(owner, <date>)` is exempt from the first 
 
 ## 10. The supervising session's routine
 
-1. On starting, read the handoff, the delivery rules, recent decisions and the queue. Check live state with `deploy.sh check`, the queue log and the repository's log. Trust none of the handoff until checked.
+1. On starting, read the handoff, the delivery rules, recent decisions and the queue. Check live state with `deploy.sh check`, the queue log and the repository's log. Trust none of the handoff until checked. Where the project reports to a dashboard, say you are the session in charge, from the workspace: `<kit>/bin/runner_report.py --in-charge`. The dashboard then names you beside the runner, by the identifier your own agent knows you by, so the owner can find this session again.
 2. Design with the owner one question at a time, each with a recommended answer. Settle engineering choices alone, visibly and reversibly, and record them.
 3. Record every decision in `DECISIONS.md` as it is made, signed `(owner, <date>)` or `(supervising session, <date>)`, with the reason, and commit it before the next question.
 4. Turn designs into tasks (section 4) and place them in `RUN-ORDER.md`. A specification that needs thought is written by a subagent on the strongest model; inventory, search and deploys go to subagents on the cheaper model.
@@ -175,6 +175,7 @@ A commit recording a decision signed `(owner, <date>)` is exempt from the first 
 - `runs/queue.log` is the runner's log. Each session's full transcript is kept beside it.
 - `runs/usage.log` has one line per session: the task, the attempt, the letter and effort, the minutes, and what the adapter reports the session used (turns, tokens, cost at list price). Read it before deciding what letter and effort the next tasks get.
 - `<kit>/bin/runner-queue` shows the task in hand, tasks parked for the owner, and the tasks remaining, refreshed every ten seconds. `runner-queue once` prints it once; `runner-queue log` follows the log.
+- A dashboard is optional. `<kit>/dashboard/serve.py` serves one page for every runner that reports to it: the task in hand, what has been delivered, what waits for the owner, what the sessions used, the output as it is written and the task file. `run_queue.sh` and `run_task.sh` start `<kit>/bin/runner_report.py`, which reads the workspace's files every two seconds and sends what changed to the address in `DASHBOARD_URL`: in `runner.conf` for one project, or in `~/.config/runner-kit/dashboard.conf` for every runner on the machine. With no address set it does nothing. Like the notices it is best effort: a runner that cannot reach the dashboard says so in `runs/queue.log`, at most once an hour, and carries on. Where its state arrives and one of its files does not, the runner's pane on the page says which file and why, and the rest still arrives. The page is a view of the files and never the record; `TASKS.md` and the logs remain the truth. Under each runner's name the page gives the agent session doing the work, by the identifier its own agent knows it by (a Claude Code session id, a Codex thread id), read from the runner's logs, and the supervising session that last said it is in charge (section 10). Clicking an identifier copies the command that opens that session again. The owner can give a runner a name of their own on the page; the dashboard keeps it, and it changes nothing a runner does.
 
 ## 12. Rules that carry to every project
 

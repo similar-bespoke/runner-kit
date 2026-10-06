@@ -33,6 +33,9 @@
 # runs; its commit cannot then be judged against the check.
 # Each session writes one line to runs/usage.log: the task, the attempt, the
 # letter and effort, the minutes, and what the adapter says the session used.
+# A dashboard, if one is set for the project or the machine, is told what the
+# task is doing by bin/runner_report.py. A queue has already started it; a task
+# run by hand starts its own here, and nothing waits for it.
 # Everything that differs between agents is in adapters/<name>.sh. The letter
 # in the task's M column picks the adapter (ADAPTER_<letter>) and the model
 # (MODEL_<letter>) from runner.conf.
@@ -102,6 +105,7 @@ fi
 LOG="$RUNS/$ID-$(date +%Y%m%d-%H%M%S).log"
 say "task $ID  builder=$AGENT model=$MODEL effort=$EFFORT  max attempts=$MAX  repo HEAD ${BASE[$REPO]}"
 say "log $LOG"
+( python3 "$BIN/runner_report.py" --watch $$ --task "$ID" >/dev/null 2>&1 & )
 
 # ---- the project's check, run by the runner. A result is kept with the
 # commits and tracked changes it was run on (runs/check.last), so the check

@@ -34,6 +34,10 @@
 # starts again when TASKS.md, RUN-ORDER.md, DECISIONS.md, either prompt or
 # runner.conf changes, or on `touch runs/queue.go`.
 #
+# A dashboard, if one is set for the project or the machine, is told what the
+# queue is doing by bin/runner_report.py, which main starts beside the queue
+# and which nothing here waits for. A dry pass does not start it.
+#
 # Test switches (no model call, no notice): QUEUE_DRY=1 logs what would run,
 # QUEUE_ONCE=1 does one pass and exits, QUEUE_ORDER and QUEUE_RUNS point at
 # another queue file and runs directory, QUEUE_POLL is the seconds between
@@ -296,6 +300,7 @@ main() {
   trap 'rm -rf "$LOCK"; exit 130' INT TERM HUP
   [ -f "$STOPFILE" ] && { rm -f "$STOPFILE"; log "removed an old stop file"; }
   log "queue started (pid $$), queue file $ORDER"
+  [ "$DRY" = 1 ] || ( python3 "$BIN/runner_report.py" --watch $$ --runs "$RUNS" --order "$ORDER" >/dev/null 2>&1 & )
   local idle_sent=0 n limit="${STOP_STREAK:-3}"
   local -aU streak=()
   rm -f "$GOFILE"
