@@ -101,10 +101,12 @@ MAX_REPORT = 4 * 1024 * 1024    # a report unpacked
 MAX_VALUES = 20000              # the values in a report: a real one is a few long texts and a few hundred short ones
 MAX_TASKS = 2 * 1024 * 1024     # characters of a task file
 MAX_PIECE = 1024 * 1024         # characters of one piece of a log that are read into lines
+MAX_KEPT = 512 * 1024           # characters of output kept for each runner, whatever the number of lines
 MAX_RUNNERS = 200               # runners shown at once
 MAX_NAMES = 1000                # names kept
 MAX_NAME = 60                   # characters in a name given to a runner on the page
 BUSY = 64                       # callers in hand at once
+INGEST = 16                     # of them, reports taken in hand at once: the rest of the places are for the page's questions
 PATIENCE = 0.25                 # seconds a caller may keep the dashboard waiting before it can lose its place
 LINGER = 8 * 1024 * 1024        # bytes of a refused request that are read and dropped, so that its sender hears why
 ID = re.compile(r"^[A-Za-z0-9_.-]{4,64}$")
@@ -201,7 +203,9 @@ def piece_of(raw):
     lines = body[-MAX_PIECE:].split("\n")
     if lines and lines[-1] == "":
         lines.pop()
+    mark = raw.get("mark")
     return {"name": name[:200], "fresh": raw.get("fresh") is True, "from": start, "to": end,
+            "mark": mark if isinstance(mark, str) and re.fullmatch(r"[0-9a-f]{40}", mark) else "",
             "lines": [line.rstrip("\r")[:4000] for line in lines[-LINES:]]}
 
 
@@ -209,13 +213,18 @@ class Runner:
     def __init__(self, rid):
         self.id, self.report, self.seen, self.first, self.skew = rid, {}, 0.0, time.time(), 0.0
         self.life = secrets.token_hex(4)    # a page's place among the lines holds for this life of the runner only
-        self.lines, self.seq = deque(maxlen=LINES), 0
-        self.streams = {"out": {"name": "", "to": 0}, "ev": {"name": "", "to": 0}}
+        self.lines, self.seq, self.chars = deque(maxlen=LINES), 0, 0
+        self.streams = {"out": {"name": "", "to": 0, "mark": ""}, "ev": {"name": "", "to": 0, "mark": ""}}
         self.tasks_hash, self.tasks_md, self.parsed = "", "", None
 
     def push(self, kind, line):
         self.seq += 1
+        if len(self.lines) == self.lines.maxlen:
+            self.chars -= len(self.lines[0][2])
         self.lines.append((self.seq, kind, line))
+        self.chars += len(line)
+        while self.chars > MAX_KEPT and len(self.lines) > 1:     # a runner's output is bounded in characters too, not only in lines
+            self.chars -= len(self.lines.popleft()[2])
 
     def add(self, key, piece):
         """Whole lines of a growing file. A piece either follows exactly what is held, or says it starts afresh;
@@ -230,12 +239,12 @@ class Runner:
                 self.push("m", "")                  # lines between were not sent
             elif held["name"] == name:
                 self.push("m", "again")             # the same file, cut short or written again
-            held.update(name=name, to=piece["from"])
+            held.update(name=name, to=piece["from"], mark="")
         elif name != held["name"] or piece["from"] != held["to"]:
             return
         for line in piece["lines"]:
             self.push("o" if key == "out" else "q", line)
-        held["to"] = piece["to"]
+        held["to"], held["mark"] = piece["to"], piece["mark"]
 
 
 class Dashboard:
@@ -250,6 +259,7 @@ class Dashboard:
         self.lock, self.runners, self.dirty = threading.Lock(), {}, False
         self.names, self.naming = {}, threading.Lock()   # names the owner gave runners on the page
         self.heavy = threading.BoundedSemaphore(2)       # reports unpacked and read at once
+        self.ingest = threading.BoundedSemaphore(INGEST) # reports in hand at once, from the first byte to the answer
         self.page = (None, b"", "")
         os.makedirs(os.path.join(state_dir, "tasks"), exist_ok=True)
         self.load()
@@ -320,7 +330,8 @@ class Dashboard:
         # Everything that takes time is done before the lock: one report must not hold up every page.
         report, pieces = shape(body), {key: piece_of(body.get(key)) for key in ("out", "ev")}
         digest = report["tasks"].get("hash", "")
-        tasks_md = body["tasks_md"][:MAX_TASKS] if isinstance(body.get("tasks_md"), str) and digest else None
+        # A lone surrogate in a text cannot be written to a file; it is replaced, here, before anything else is done with it.
+        tasks_md = body["tasks_md"][:MAX_TASKS].encode("utf-8", "replace").decode("utf-8") if isinstance(body.get("tasks_md"), str) and digest else None
         now, pushed_out = time.time(), None
         with self.lock:
             r = self.runners.get(rid)
@@ -344,7 +355,7 @@ class Dashboard:
         if tasks_md is not None:
             try:        # kept on disk only to be shown again at once after a restart: the report itself is taken
                 self.write(self.tasks_path(rid), tasks_md)
-            except OSError as error:
+            except (OSError, UnicodeError) as error:
                 sys.stderr.write(f"could not save a task file: {error}\n")
         return {"ok": True, "have": have}
 
@@ -625,27 +636,34 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if not self.authorised():       # said at once: nothing of a report is read from a sender with no token
                 raise Refused(401, "this dashboard takes reports only with its token")
-            data = self.body(length, 60)
-            with app.heavy:     # unpacking and reading a report is the costly part: two at a time, the rest wait
-                if self.headers.get("Content-Encoding", "").lower() == "gzip":
-                    unpack = zlib.decompressobj(16 + zlib.MAX_WBITS)
-                    try:
-                        data = unpack.decompress(data, MAX_REPORT)
-                    except zlib.error:
-                        raise Refused(400, "the report could not be unpacked")
-                    if unpack.unconsumed_tail:
+            if not app.ingest.acquire(blocking=False):     # a flood of reports must leave places for the page's questions
+                raise Refused(503, "the dashboard is taking as many reports as it can at once; try again in a moment")
+            try:
+                data = self.body(length, 60)
+                self.server.waits(self.connection)      # queued for the work below is waiting, not working: it can lose its place
+                with app.heavy:     # unpacking and reading a report is the costly part: two at a time, the rest wait
+                    self.server.waits(self.connection, False)
+                    if self.headers.get("Content-Encoding", "").lower() == "gzip":
+                        unpack = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                        try:
+                            data = unpack.decompress(data, MAX_REPORT)
+                        except zlib.error:
+                            raise Refused(400, "the report could not be unpacked")
+                        if unpack.unconsumed_tail:
+                            raise Refused(413, "a report is at most %d bytes unpacked" % MAX_REPORT)
+                    if len(data) > MAX_REPORT:
                         raise Refused(413, "a report is at most %d bytes unpacked" % MAX_REPORT)
-                if len(data) > MAX_REPORT:
-                    raise Refused(413, "a report is at most %d bytes unpacked" % MAX_REPORT)
-                if values_in(data) > MAX_VALUES:
-                    raise Refused(413, "a report holds at most %d values" % MAX_VALUES)
-                body = read_json(data, "a report")
-                del data
-                answer = app.take(body)
-            self.reply(200, answer)
+                    if values_in(data) > MAX_VALUES:
+                        raise Refused(413, "a report holds at most %d values" % MAX_VALUES)
+                    body = read_json(data, "a report")
+                    del data
+                    answer = app.take(body)
+                self.reply(200, answer)
+            finally:
+                app.ingest.release()
         except Refused as why:
             self.close_connection = True
-            self.reply(why.code, {"ok": False, "error": str(why)})
+            self.reply(why.code, {"ok": False, "error": str(why)}, headers=(("Retry-After", "1"),) if why.code == 503 else ())
             self.linger()
 
 

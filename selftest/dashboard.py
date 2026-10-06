@@ -55,6 +55,11 @@ class Between(http.server.BaseHTTPRequestHandler):
     dashboard has taken the report, or to hand reports on under another name."""
     def do_POST(self):
         cfg, body = self.server.cfg, self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if cfg.get("once") and len(body) > cfg["once"]:
+            cfg.pop("once")                 # one refusal, then it takes what it is given
+            page = b"<html><body><h1>413 Request Entity Too Large</h1></body></html>"
+            self.send_response(413); self.send_header("Content-Type", "text/html"); self.send_header("Content-Length", str(len(page))); self.end_headers(); self.wfile.write(page)
+            return
         if cfg.get("limit") and len(body) > cfg["limit"]:
             cfg["refused"] = cfg.get("refused", 0) + 1
             page = b"<html><body><h1>413 Request Entity Too Large</h1></body></html>"
@@ -75,6 +80,27 @@ def between(to, **cfg):
     server.cfg = {"to": to, **cfg}
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return "http://127.0.0.1:%d" % server.server_address[1], server.cfg
+def raw_server(answer):
+    """Something that answers every request with these bytes, however wrong they are, and hangs up."""
+    srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(5)
+    def run():
+        while True:
+            try: c, _ = srv.accept()
+            except OSError: return
+            c.settimeout(2)
+            try:
+                got = b""
+                while b"\r\n\r\n" not in got: got += c.recv(65536)
+                c.sendall(answer)
+            except OSError: pass
+            c.close()
+    threading.Thread(target=run, daemon=True).start()
+    return "http://127.0.0.1:%d" % srv.getsockname()[1]
+def hundred(prefix, n):
+    """n lines of exactly 100 bytes each, ending in the prefix and a number, so that a file of them rewritten with
+    another prefix is the same size and differs where a log's lines differ: at the end, where the time or the count is."""
+    return "".join("%s %s%03d\n" % ("." * (95 - len(prefix)), prefix, i) for i in range(n))
+def of(prefix, lines): return sum(len(l) > 4 and l[-4] == prefix for l in lines)
 def workspace(name, tasks="### 1.1 A task [ ]  M: S medium, R: O high\n"):
     w = tempfile.mkdtemp(dir=SP, prefix="rf-ws-"); os.makedirs(w + "/runs")
     open(w + "/TASKS.md", "w").write(tasks); open(w + "/RUN-ORDER.md", "w").write("1.1\n")
@@ -173,10 +199,11 @@ check("a name from the dashboard's own page is taken when a proxy hands it on un
       [v[0] for v in via] == [200, 403, 403] and "--allow-host evil.example" in via[1][1] and runner_of(UA, "good12345678").get("label") == "Through a proxy", via)
 UK, STK, PK = serve_(); call(UK + "/api/ingest", ok_runner)
 os.chmod(STK, 0o500)
+if os.geteuid() == 0: print("SKIP a name that cannot be kept is refused: this is run as root, which writes where it is told not to")
 unkept = call(UK + "/api/name", {"id": "good12345678", "name": "Not kept"}); shown_unkept = runner_of(UK, "good12345678").get("label")
 os.chmod(STK, 0o700)
 kept = call(UK + "/api/name", {"id": "good12345678", "name": "Kept"})[0]
-check("a name that cannot be kept is refused, with the reason, and is not shown; once it can be kept it is", unkept[0] == 500 and "could not keep the name" in unkept[1] and shown_unkept == "" and kept == 200 and runner_of(UK, "good12345678").get("label") == "Kept", (unkept, shown_unkept, kept))
+if os.geteuid() != 0: check("a name that cannot be kept is refused, with the reason, and is not shown; once it can be kept it is", unkept[0] == 500 and "could not keep the name" in unkept[1] and shown_unkept == "" and kept == 200 and runner_of(UK, "good12345678").get("label") == "Kept", (unkept, shown_unkept, kept))
 BW, bw = between(UA, host="some-name.example")
 try: rr.ask(BW + "/api/ingest", "", b"{}"); said = ""
 except rr.Unsent as why: said = str(why)
@@ -242,7 +269,7 @@ while time.time() - t0 < 2.5:
 busy[0] = False
 for t in pourers: t.join()
 kept = len(runner_of(U, "good12345678")["lines"])
-check("while reports of two million lines each pour in, a page's question is still answered: %d answered in 2.5s, the slowest in %.2fs" % (asked[0], slowest[0]), asked[0] >= 5 and slowest[0] < 1.0, (asked[0], slowest[0]))
+check("while reports of two million lines each pour in, a page's question is still answered: %d answered in 2.5s, the slowest in %.2fs" % (asked[0], slowest[0]), asked[0] >= 5 and slowest[0] < 0.3, (asked[0], slowest[0]))
 check("and of those lines the page is given the last few hundred", 0 < kept <= 400, kept)
 
 # ---- the places
@@ -265,6 +292,25 @@ for h in held: h.sendall(b"POST /api/name HTTP/1.1\r\nHost: 127.0.0.1\r\nContent
 time.sleep(0.6); answers = [call(UA + "/healthz")[0] for _ in range(10)]
 for h in held: h.close()
 check("nor do sixty-four that begin a request and stop", answers == [200] * 10, answers)
+big_tasks = "### 1.1 A task [ ]  M: S medium, R: O high\n" + dense(1_900_000)
+call(UA + "/api/ingest", {**ok_runner, "tasks": {"hash": "bigtasks"}, "tasks_md": big_tasks})
+slow = []
+for _ in range(64):         # sixty-four callers that ask for a large answer and never read it
+    c = socket.socket(); c.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2048); c.connect(("127.0.0.1", port))
+    c.sendall(b"GET /api/tasks.md?id=good12345678 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"); slow.append(c)
+time.sleep(0.8); answers = [call(UA + "/healthz")[0] for _ in range(10)]
+for c in slow: c.close()
+check("nor do sixty-four that ask for a large answer and never read it", answers == [200] * 10, answers)
+burst = gzip.compress(json.dumps({"id": "burst0000001", "sent": time.time(), "info": {"project": "burst"}, "note": "A" * 3_900_000}).encode(), 9)
+stop_flood = [False]
+def flood():
+    while not stop_flood[0]: call(UA + "/api/ingest", raw=burst, **{"Content-Encoding": "gzip"})
+floods = [threading.Thread(target=flood, daemon=True) for _ in range(70)]
+for t in floods: t.start()
+time.sleep(1.5); answers = [call(UA + "/healthz")[0] for _ in range(10)]
+stop_flood[0] = True
+for t in floods: t.join(30)
+check("while seventy senders each send a report of four megabytes unpacked (%d bytes sent), a page's question is answered: %d of 10" % (len(burst), answers.count(200)), answers.count(200) >= 8, answers)
 class Caller:
     shut = 0
     def shutdown(self, how): self.shut += 1
@@ -379,6 +425,73 @@ long_file = SP + "/long-tasks.md"
 open(long_file, "w").write("### 1.1 A task [ ]  M: S medium, R: O high\n" + "a line of the task's text\n" * 80000)
 cut = rr.load_tasks(long_file)
 check("a task file longer than a dashboard takes is sent cut at a line, and says so", len(cut["text"].encode()) <= rr.MOST_TASKS + 200 and cut["bytes"] > rr.MOST_TASKS and cut["text"].rstrip().endswith("is not shown here.)") and "\na line of the task's text\n\n(This task file" in cut["text"] and cut["hash"] == hashlib.sha1(open(long_file, "rb").read()).hexdigest())
+
+# ---- a file written again where it lies is found out from what the dashboard holds
+rr.EVERY = 0.05
+W6, place6 = workspace("again-where-it-lies")
+LOG6 = W6 + "/runs/1.1-20260101-000000.log"
+head6 = "attempt 1 of 4: new session abc-666\n"
+open(LOG6, "w").write(head6 + hundred("A", 20))
+rep6 = rr.Reporter(place6, os.getpid(), "1.1")
+for _ in range(3): cycle(rep6, U)
+with open(LOG6, "r+") as f: f.write(head6 + hundred("B", 20)); f.truncate()       # the same file, the same size, other lines
+rep6.build(); rep6.have = {}        # the report that would have carried the new file never arrives
+for _ in range(4): cycle(rep6, U)
+got6 = shown(U, place6.id)
+check("a file written again where it lies, whose first report is lost, is read from its start: every new line, once (%d of 20)" % of("B", got6), of("B", got6) == 20 and of("A", got6) == 20, [l[-5:] for l in got6[:30]])
+with open(LOG6, "r+") as f: f.write(head6 + hundred("C", 20)); f.truncate()
+rep6 = rr.Reporter(place6, os.getpid(), "1.1")      # the reporter itself is started again: it remembers nothing
+for _ in range(4): cycle(rep6, U)
+got6 = shown(U, place6.id)
+check("and so is one written again while the reporter was not running (%d of 20)" % of("C", got6), of("C", got6) == 20, [l[-5:] for l in got6[-30:]])
+held6 = rr.send(U, "", rep6.build()[0])
+check("the dashboard hands back a fingerprint of what stood before the place it holds", isinstance(held6["out"].get("mark"), str) and len(held6["out"]["mark"]) == 40, held6)
+
+# ---- one lost report is chance, not a fault
+UO, _, PO = serve_()
+ONCE, once = between(UO, once=2500)
+W7, place7 = workspace("one-loss")
+open(W7 + "/runs/1.1-20260101-000000.log", "w").write("attempt 1 of 4: new session abc-777\n" + dull(60, 100))
+del NOTES[:]
+rep7, th7 = reporting(place7, ONCE)
+arrived7 = until(lambda: len(shown(UO, place7.id)) >= 61, 20)
+time.sleep(0.5)
+notes7 = [n[1] for n in NOTES if n[0] == "one-loss"]
+rep7.given = 0; th7.join(10)
+check("one report with files in it that is turned back on the way is sent again, and neither held back nor said to be lost", arrived7 and "once" not in once and not rep7.stuck and not any("not reaching" in n or "cannot be reached" in n for n in notes7), (arrived7, once, rep7.stuck, notes7))
+rr.EVERY = 2
+
+# ---- text that is another's: it cannot hang the dashboard, nor stop a report
+N = 40_000
+slow_text = "### 1.1 A [ ]  M: S medium, R: O high\n### 1." + "1" * N + "!\n### 1.2 x [ ] " + " " * N + "z\n### 1.3 Fine [ ]  M: S medium, R: O high\nbody\n"
+t0 = time.time(); ids = [t["id"] for t in rr.parse_tasks(slow_text)]; took = time.time() - t0
+check("a task file with two very long lines is read in %.2fs, and its other headings are read as they are" % took, took < 0.5 and ids == ["1.1", "1.2", "1.3"], (took, ids))
+UR, _, PR = serve_()
+call(UR + "/api/ingest", {**ok_runner, "id": "redos0000001", "tasks": {"hash": "r1"}, "tasks_md": slow_text})
+box = {}
+tt = threading.Thread(target=lambda: box.setdefault("code", call(UR + "/api/tasks?id=redos0000001")[0])); tt.start(); time.sleep(0.05)
+t1 = time.time(); hc = call(UR + "/healthz")[0]; hz = time.time() - t1; tt.join(40)
+check("while the dashboard reads such a task file for a page, every other question is still answered (in %.2fs)" % hz, hc == 200 and hz < 1.0 and box.get("code") == 200, (hc, hz, box))
+sur = call(U + "/api/ingest", raw=json.dumps({**ok_runner, "id": "sur000000001", "tasks": {"hash": "s1"}, "tasks_md": "### 1.1 A\ud800b [ ]\n"}).encode())
+got = call(U + "/api/tasks.md?id=sur000000001")
+check("a task file holding a lone surrogate is taken, kept and shown, the surrogate replaced", sur[0] == 200 and got[0] == 200 and "A" in got[1], (sur[0], got[0]))
+r_chars = serve.Runner("charcap00001")
+for i in range(5000): r_chars.push("o", "x" * 4000)
+r_short = serve.Runner("charcap00002")
+for i in range(5000): r_short.push("o", "y" * 10)
+check("a runner's output is bounded in characters as well as lines: %d kept of 20,000,000, and the count is the true one" % r_chars.chars, r_chars.chars <= serve.MAX_KEPT and r_chars.chars == sum(len(l[2]) for l in r_chars.lines) and r_chars.lines[-1][0] == 5000 and len(r_short.lines) == 4000 and r_short.chars == 40000, (r_chars.chars, r_short.chars, len(r_short.lines)))
+for name, answer in (("an answer cut short in a refusal", b'HTTP/1.1 413 Payload Too Large\r\nTransfer-Encoding: chunked\r\nContent-Type: application/json\r\n\r\n40\r\n{"error":'),
+                     ("an answer that is not HTTP", b"garbage\r\n\r\n"),
+                     ("an answer cut short in a success", b'HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n{"ok":')):
+    try: rr.ask(raw_server(answer) + "/api/ingest", "", b"{}"); outcome = "no failure"
+    except rr.Unsent: outcome = "Unsent"
+    except Exception as e: outcome = type(e).__name__
+    check("%s is a failure to be tried again, and does not end the reporter" % name, outcome == "Unsent", outcome)
+words = []
+for name, answer in ((403, b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"), ("said", b'HTTP/1.1 403 Forbidden\r\nContent-Length: 30\r\nContent-Type: application/json\r\n\r\n{"error":"not from this name"}')):
+    try: rr.ask(raw_server(answer) + "/api/ingest", "", b"{}")
+    except rr.Unsent as why: words.append(str(why))
+check("a 403 that says nothing is taken to be a refused token; one that says why is quoted", "refused this machine's token" in words[0] and words[1] == "answered 403: not from this name", words)
 
 # ---- which process is watched
 os.makedirs(W + "/runs/queue.lock"); sleeper = subprocess.Popen(["sleep", "30"]); procs.append(sleeper)

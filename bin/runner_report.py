@@ -57,6 +57,7 @@ import atexit
 import glob
 import gzip
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -77,7 +78,8 @@ TAIL = 48 * 1024          # how far back into a log a first report reaches
 CHUNK = 256 * 1024        # the most text of one log a report carries
 SMALLEST = 4 * 1024       # the least it comes down to, however often reports that carried more did not arrive
 MOST_TASKS = 1536 * 1024  # bytes of a task file a report carries; a longer file is cut at a line, and says so
-MARK = 64                 # bytes kept from just before the place a file was read to: is it still the same file?
+MARK = 64                 # bytes just before the place a file was read to, as a fingerprint: is it still the same file?
+HEAD_MAX = 1000           # characters of a task heading that are read; a longer line is cut before any pattern is run on it
 LAST_WORDS = 60           # seconds a finished runner keeps trying to send its last report
 KINDS = {"tasks_md": "the task file", "out": "the session's output", "ev": "the queue log"}
 STAMP = "%Y-%m-%d %H:%M:%S"
@@ -190,10 +192,12 @@ def parse_tasks(text):
     """Every task in a TASKS.md, in the file's order: the parts of its heading, and its text."""
     tasks, seen, current = [], set(), None
     for line in text.split("\n"):
-        m = HEADING.match(line)
+        # The patterns below backtrack: on a very long line they take longer than the square of its length, and a
+        # task file is another's text. A heading is nowhere near this long.
+        m = HEADING.match(line[:HEAD_MAX])
         if m or line.startswith("## "):
             current = None
-        if m and m.group(1) not in seen and "(as proposed)" not in line and "as originally written" not in line:
+        if m and m.group(1) not in seen and "(as proposed)" not in line[:HEAD_MAX] and "as originally written" not in line[:HEAD_MAX]:
             rest = m.group(2)
             mark = re.search(r"\[([ ~x])\]", rest)
             after = rest[mark.end():] if mark else ""
@@ -392,9 +396,11 @@ def next_piece(path, have, first, whole=False, known=None, most=CHUNK):
     of this file (a new file, a dashboard that restarted, a file cut short, put in another's place or written
     again where it lies), a fresh start from the file's last `first` bytes. A last line with no line feed waits
     until it has one, unless `whole` says the file is finished. A line too long for one report is sent once, as
-    its first characters. `most` is how much of the file one report carries. `known` remembers each file between
-    calls: which file it was, what stood just before the places it was read to, and how far a long line has been
-    followed."""
+    its first characters. `most` is how much of the file one report carries. A piece carries a fingerprint of the
+    bytes just before its end, which the dashboard holds and hands back in `have["mark"]`: the next piece goes on
+    only if those bytes are still where they were, so a file written again where it lies is found out even after a
+    report was lost or this program was started again. `known` remembers which file it was (its inode) and how far
+    a long line has been followed."""
     known = {} if known is None else known
     try:
         with open(path, "rb") as f:
@@ -403,13 +409,13 @@ def next_piece(path, have, first, whole=False, known=None, most=CHUNK):
             start = have.get("to", -1) if have.get("name") == name else -1
             fresh = known.get(path, st.st_ino) != st.st_ino or not 0 <= start <= size
             known[path] = st.st_ino
-            marks = known.get(("marks", path), {})
             if not fresh and 0 < start:
                 # A file written again where it lies keeps its name and its number, and may be longer than it was.
-                # What stood just before this place is remembered; without that memory, the place must at least
-                # follow a line feed, unless nothing has been added since it was read to.
+                # The dashboard says what stood just before the place it holds. A dashboard that says nothing (an
+                # older one) leaves only this: the place must follow a line feed, unless nothing was added since.
                 stood = before(f, start)
-                fresh = stood != marks[start] if start in marks else start < size and not stood.endswith(b"\n")
+                held = have.get("mark")
+                fresh = hashlib.sha1(stood).hexdigest() != held if isinstance(held, str) and held else start < size and not stood.endswith(b"\n")
             if fresh:
                 start = max(0, size - first)
                 if start:
@@ -436,11 +442,10 @@ def next_piece(path, have, first, whole=False, known=None, most=CHUNK):
                 if more or whole:
                     end = at + more.find(b"\n") + 1 if more else at
                     body = data[:4000] + " \u2026\n".encode()
-            # The place this piece starts at and the place it ends at: the dashboard will hold one or the other.
-            known[("marks", path)] = {start: before(f, start), end: before(f, end)}
+            mark = hashlib.sha1(before(f, end)).hexdigest()
     except OSError:
         return None
-    return {"name": name, "fresh": fresh, "from": start, "to": end, "size": size, "text": body.decode("utf-8", "replace")}
+    return {"name": name, "fresh": fresh, "from": start, "to": end, "size": size, "mark": mark, "text": body.decode("utf-8", "replace")}
 
 
 class Reporter:
@@ -734,11 +739,15 @@ def ask(url, token, body=None):
         try:        # a dashboard says why it refuses, and what to do about it
             said = json.loads(error.read(4096).decode("utf-8", "replace"))
             said = plain(said.get("error", "")) if isinstance(said, dict) else ""
-        except (ValueError, OSError):
+        except (ValueError, OSError, http.client.HTTPException):
             said = ""
+        if error.code == 403 and not said:      # a gate in front of the dashboard that says only no: most likely the token
+            raise Unsent("refused this machine's token (set DASHBOARD_TOKEN beside its address)")
         raise Unsent(f"answered {error.code}" + (f": {said}" if said else ""))
     except (urllib.error.URLError, OSError) as error:
         raise Unsent(f"cannot be reached ({plain(getattr(error, 'reason', error))})")
+    except http.client.HTTPException as error:       # an answer cut short, or not an answer
+        raise Unsent(f"gave an answer that was cut short or not HTTP ({plain(type(error).__name__)})")
     except ValueError:
         raise Unsent("gave an answer that could not be read; is the address a runner dashboard?")
 
