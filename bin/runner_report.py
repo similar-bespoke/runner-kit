@@ -89,6 +89,12 @@ AGENTS = {"claude": "Claude Code", "codex": "Codex"}
 # nothing that is not plainly an identifier is ever passed on as one.
 SESSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 HEADING = re.compile(r"^#{3,4} (\d+\.\d+[a-z0-9]*)\s+(.*)$")
+# The clock bin/render_stream.py puts before each event it writes ("%6.0fs", then two spaces), and the two lines
+# that name the agent after it. selftest/dashboard.py reads these from that program's own output, so the two stay
+# in step.
+CLOCK = r"(?m)^(?=[ \d]{6}s|\d{7,}s) *\d+s  "
+SAID = re.compile(CLOCK + "(" + "|".join(AGENTS) + "): ")
+STARTED = re.compile(CLOCK + r"session started  codex thread=")
 TASK_LOG = re.compile(r"^(.+)-(\d{8}-\d{6})\.log$")
 QUEUE_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (.*)$")
 USAGE_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) task (\S+) attempt (\d+) (\S+) (\S+): (\d+) min(.*)$")
@@ -318,12 +324,16 @@ def agent_of(conf, letter, builder=""):
 
 
 def agent_in(text):
-    """The agent a session log was written by, from the lines the runner writes for what the agent said
-    ("claude: ..." or "codex: ..."); empty when the log says none. For a workspace whose settings are not known."""
-    for name in AGENTS:
-        if re.search(r"(?m)^" + name + r": ", text):
-            return name
-    return ""
+    """The agent a session log was written by, from what bin/render_stream.py writes in it; empty when the log
+    does not say. For a workspace whose settings are not known. A Codex session names itself when it starts
+    ("session started  codex thread=..."), and that is taken first. Otherwise the lines written for what the agent
+    said ("claude: ..." or "codex: ...") decide, when they all name one agent; where they name both, nothing is
+    said. Only a line that begins with render_stream.py's clock counts: a line with no clock is something the
+    agent's own program printed ("claude: command not found" in a Codex log, say), not something an agent said."""
+    if STARTED.search(text):
+        return "codex"
+    said = set(SAID.findall(text))
+    return said.pop() if len(said) == 1 else ""
 
 
 def session_in_charge(place):
@@ -557,7 +567,8 @@ class Reporter:
         order = list(dict.fromkeys(read_order(place.order)))
         used = self.cached(os.path.join(place.runs, "usage.log"), load_usage)
         usage = used["rows"]
-        q = queue_state(read_text(os.path.join(place.runs, "queue.log"), last=200 * 1024))
+        qlog = read_text(os.path.join(place.runs, "queue.log"), last=200 * 1024)
+        q = queue_state(qlog)
         waiting = {}
         for path in sorted(glob.glob(os.path.join(glob.escape(place.runs), "waiting", "*"))):
             why = (read_text(path).split("\n") + ["", ""])[1]
@@ -586,7 +597,9 @@ class Reporter:
         # decides, else the session of the task in hand, else the last session that ran.
         work = None
         if state == "deciding" and q["stop_session"]:
-            work = {"kind": "stop", "agent": agent_of(place.conf, place.conf.get("SUPERVISOR", "")), "name": "",
+            # A stop session's output is in the queue log, after the line that names the session.
+            said = qlog.rpartition("supervising session %s for task " % q["stop_session"])[2]
+            work = {"kind": "stop", "agent": agent_of(place.conf, place.conf.get("SUPERVISOR", "")) or agent_in(said), "name": "",
                     "id": q["stop_session"], "task": hand, "live": True}
         elif log and session_in(text):
             builder = first.group(1) if first else ""

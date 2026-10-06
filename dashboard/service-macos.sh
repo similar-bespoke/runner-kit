@@ -3,7 +3,8 @@
 # agent of the user who runs this: started when that user logs in, started
 # again if it ends.
 #   service-macos.sh [options] print      show the launchd file it would write; change nothing
-#   service-macos.sh [options] install    write it, make a token if there is none, start the service
+#   service-macos.sh [options] install    write it, make a token if there is none, start the service and wait
+#                                         until it answers (a first start can take most of a minute)
 #   service-macos.sh [options] status     is it loaded, and does it answer?
 #   service-macos.sh [options] uninstall  stop it and remove the launchd file; the state directory is kept
 # Options, each with a value, before the word:
@@ -53,15 +54,35 @@ status() {
   print
 }
 
+# wait_until <seconds> <command ...>: run the command once a second until it succeeds. Fails if it has not by
+# the time the seconds are up.
+wait_until() {
+  local limit="$1" start=$SECONDS; shift
+  until "$@" >/dev/null 2>&1; do
+    (( SECONDS - start >= limit )) && return 1
+    sleep 1
+  done
+}
+gone() { ! launchctl print "$DOMAIN/$LABEL"; }
+answers() { curl -sf -m 5 "http://127.0.0.1:$PORT/healthz"; }
+
+# Read by another script for the functions above (selftest/dashboard.py does): nothing more is done.
+[[ "$ZSH_EVAL_CONTEXT" == toplevel ]] || return 0
+
 case "${1:-}" in
   print) plist;;
   install)
     mkdir -p "$STATE" "${PLIST:h}" && chmod 700 "$STATE" || exit 1
     [ -s "$STATE/token" ] || ( umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "$STATE/token" ) || exit 1
     plist > "$PLIST" || exit 1
+    # bootout returns before the old service has gone, and bootstrap fails while it is still there.
     launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null
+    wait_until 30 gone || { print -u2 "The service $LABEL that was already running did not stop within 30 seconds, so nothing was started. See: launchctl print $DOMAIN/$LABEL"; exit 1; }
     launchctl bootstrap "$DOMAIN" "$PLIST" || exit 1
-    sleep 2; status
+    # launchd can take most of a minute to start a service for the first time.
+    print "Waiting up to 90 seconds for the dashboard to answer on port $PORT."
+    wait_until 90 answers || { print -u2 "The dashboard did not answer on port $PORT within 90 seconds. It is loaded and launchd keeps trying to start it. See $STATE/serve.err.log and: launchctl print $DOMAIN/$LABEL"; exit 1; }
+    status
     print "Reports need the token in $STATE/token. On each machine whose runners should report here, write"
     print "the dashboard's address and that token in ~/.config/runner-kit/dashboard.conf, as DASHBOARD_URL= and"
     print "DASHBOARD_TOKEN=, and keep that file readable by its owner only.";;

