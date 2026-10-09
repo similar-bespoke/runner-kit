@@ -2,12 +2,14 @@
 
 ## How a task is run
 
-The whole process is three files: `SESSION-PROMPT.md` (what a task session
+The workspace prompts are `SESSION-PROMPT.md` (what a task session
 does), `SUPERVISOR-PROMPT.md` (what happens when a task stops) and
 `DELIVERY-RULES.yaml` (the rules). `runner_checks.py` in the runner kit
 (`<KIT>/bin/`) enforces the rules it can, through the git pre-commit hook in
 each repository and through `run_task.sh`. The order is `RUN-ORDER.md`. The
-full instructions are `<KIT>/PROTOCOL.md`.
+full instructions are `<KIT>/PROTOCOL.md`. Its shared delivery instructions
+are included by the launcher on every task attempt and stop session, so an
+older workspace prompt still receives the current workflow.
 
 Model and effort per task, in the M column: a letter that `runner.conf` maps
 to an agent and a model (`ADAPTER_<letter>`, `MODEL_<letter>`), then the
@@ -25,5 +27,5 @@ G1: the outcome this serves.
 Ordered by the owner, <date>. Observed: <the failure, with the row, log line or time>.
 Files: <every file it may touch, and every new file by name>.
 Build: <what to build, at the nearest existing boundary. About N lines.>
-Done when: <a check on real or copied data that shows the outcome, not "tests pass">.
+Done when: <the observable outcome and sufficient evidence on real or copied data; name required regression checks separately when they establish different behaviour>.
 Owner sees: <what changes for the owner once it is live>.

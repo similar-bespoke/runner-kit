@@ -216,6 +216,7 @@ MD
 # The self-test's stand-in for an agent session (adapters/stub.sh). It does by
 # rote what a session would do for each toy task, through the same commit hook.
 ID="$1"; source "$RUNNER_CONF"; WS="$WORKSPACE"; repos=(${=REPOS}); APP="${repos[1]}"
+print -r -- "$STUB_PROMPT" > "$WS/runs/$ID.$STUB_MODE.prompt"
 commit_app() { git -C "$APP" add -A && git -C "$APP" commit -q -m "$ID: $1" || exit 1; }
 mark_done() {
   local sha="$(git -C "$APP" rev-parse --short HEAD)"
@@ -224,6 +225,7 @@ mark_done() {
   print "RUNNER: done $sha"
 }
 if [[ "$STUB_PROMPT" == *"You are the supervising session for"* ]]; then
+  print -r -- "$STUB_PROMPT" > "$WS/runs/$ID.supervisor.prompt"
   case "$ID" in
     3.1) print -r -- "- Task 3.1 asks the owner whether notes are kept (supervising session, $(date +%Y-%m-%d))" >> "$WS/DECISIONS.md"
          git -C "$WS" add DECISIONS.md && git -C "$WS" commit -q -m "docs: 3.1 waits for the owner" || exit 1
@@ -381,17 +383,33 @@ else fail h "the commit check refused a commit that keeps every rule: $(print -r
 
 # ---- (i) the stand-in session runs a task to done
 note ""; note "==== (i) task 2.1 through run_task.sh with the stand-in session"
+# An older workspace prompt retains its own project instructions.
+cp "$WS/SESSION-PROMPT.md" "$T/saved-session-prompt"
+print -r -- '# Older project prompt
+---
+Retain the project-specific instruction: keep every numbered item.
+<REVIEW>' > "$WS/SESSION-PROMPT.md"
+shared_in_prompt() {
+  python3 - "$KIT/PROTOCOL.md" "$1" <<'PY'
+import sys
+protocol, prompt = (open(p).read() for p in sys.argv[1:])
+start, end = "<!-- runner-delivery-start -->", "<!-- runner-delivery-end -->"
+shared = protocol.split(start, 1)[1].split(end, 1)[0].strip()
+sys.exit(0 if shared and shared in prompt else 1)
+PY
+}
 ( cd "$WS" && "$BIN/run_task.sh" 2.1 2 ) >> "$OUT" 2>&1; RC=$?
-if [ $RC = 0 ] && grep -m1 '^### 2\.1 ' "$WS/TASKS.md" | grep -q '\[x\]' && git -C "$APP" log -1 --format=%s | grep -q '^2\.1:'; then
-  pass i "run_task.sh counted a task done on its commit and its [x], with no agent"
+if [ $RC = 0 ] && grep -m1 '^### 2\.1 ' "$WS/TASKS.md" | grep -q '\[x\]' && git -C "$APP" log -1 --format=%s | grep -q '^2\.1:' && shared_in_prompt "$WS/runs/2.1.start.prompt" && grep -qF 'Retain the project-specific instruction: keep every numbered item.' "$WS/runs/2.1.start.prompt"; then
+  pass i "run_task.sh counted a task done and delivered current shared instructions with an older workspace prompt, with no agent"
 else fail i "run_task.sh did not finish task 2.1 with the stand-in session (exit $RC)"; fi
+cp "$T/saved-session-prompt" "$WS/SESSION-PROMPT.md"
 
 # ---- (j) a commit that breaks the project's check is sent back and repaired
 note ""; note "==== (j) task 2.2: its first commit breaks the check"
 ( cd "$WS" && "$BIN/run_task.sh" 2.2 3 ) >> "$OUT" 2>&1; RC=$?
 J_LOG="$(ls -t "$WS"/runs/2.2-*.log 2>/dev/null | head -1)"
-if [ $RC = 0 ] && grep -q "fails on its commit" "$J_LOG" && grep -q "attempts:    2" "$J_LOG" && [ ! -e "$APP/src/BROKEN" ]; then
-  pass j "a commit that broke the project's check was sent back to its session, and the task ended done only once the check passed"
+if [ $RC = 0 ] && grep -q "fails on its commit" "$J_LOG" && grep -q "attempts:    2" "$J_LOG" && [ ! -e "$APP/src/BROKEN" ] && shared_in_prompt "$WS/runs/2.2.resume.prompt"; then
+  pass j "a broken check sent the session back with current shared instructions, and the task ended done only once the check passed"
 else fail j "the project's check did not send task 2.2 back for repair (exit $RC)"; fi
 
 # ---- (k) a check that already fails is reported once and does not stop the task
@@ -409,7 +427,14 @@ note ""; note "==== (l) task 3.1: a question, a stop session, parking, release"
 print -rl -- 3.1 3.3 > "$T/order-l"
 qpass() { ( cd "$WS" && QUEUE_ONCE=1 QUEUE_ORDER="$T/order-l" "$BIN/run_queue.sh" ) >> "$OUT" 2>&1; }
 L_BAD=""
+cp "$WS/SUPERVISOR-PROMPT.md" "$T/saved-supervisor-prompt"
+print -r -- '# Older stop prompt
+---
+You are the supervising session for <PROJECT>. Preserve the numbered list.' > "$WS/SUPERVISOR-PROMPT.md"
 qpass
+shared_in_prompt "$WS/runs/3.1.supervisor.prompt" || L_BAD+=" shared-instructions-missing"
+grep -qF 'Preserve the numbered list.' "$WS/runs/3.1.supervisor.prompt" || L_BAD+=" project-instructions-lost"
+cp "$T/saved-supervisor-prompt" "$WS/SUPERVISOR-PROMPT.md"
 [ -f "$WS/runs/waiting/3.1" ] && grep -q "task 3.1 parked: SUPERVISOR: waiting 3.1" "$QLOG" || L_BAD+=" not-parked"
 L_RUNS="$(grep -c "task 3.1: running" "$QLOG")"
 print -r -- "
@@ -428,7 +453,7 @@ grep -m1 '^### 3\.3 ' "$WS/TASKS.md" | grep -q '\[x\]' || L_BAD+=" dependent-not
 print -r -- 3.2 > "$T/order-l"
 qpass; qpass
 grep -q "task 3.2: DECISIONS.md changed since it was parked" "$QLOG" && grep -m1 '^### 3\.2 ' "$WS/TASKS.md" | grep -q '\[x\]' || L_BAD+=" answer-during-the-stop-session-lost"
-if [ -z "$L_BAD" ]; then pass l "a task that asked a question was parked, and a task that needs it was parked with it; a supervising entry under a new date did not release them; the owner's answer did, even when written while the stop session ran"
+if [ -z "$L_BAD" ]; then pass l "a stop session received current shared instructions with an older project prompt; parking and owner-only release held, including an answer during the stop session"
 else fail l "parking and release went wrong:$L_BAD"; fi
 
 # ---- (m) three different tasks stopping in a row pause the queue

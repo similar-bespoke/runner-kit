@@ -18,6 +18,10 @@ You are working on <PROJECT>. Read, in this order and nothing else first:
 
 Then read only the files task <ID> names, in <REPOS>.
 
+The launcher's shared delivery instructions also apply to this workspace.
+For a session started without the launcher, read section 7 of the shared
+protocol at `<RUNNER>/../PROTOCOL.md` before acting.
+
 Do task <ID> and nothing else. Rules:
 
 Core rules (these win over any rule below)
@@ -31,8 +35,6 @@ Stage the diff and use exactly one reviewer. Ask the reviewer to report only rep
 Add a task only when missing code prevents the current task from finishing. It must address an observed failure, be the smallest necessary prerequisite, and be ordered before the blocked task. Add at most one task; do not create second-level suffixes or speculative follow-ups. Put non-blocking observations in one line of the commit message.
 
 Make engineering choices within the task. Ask the owner only when the choice changes what <PROJECT> shows, files, sends or keeps, affects privacy, or requires an action only the owner can take. Do not repeat an open question or retry a parked task without its stated release condition.
-
-A supervising session does no product coding or experiments. It identifies the narrow obstruction and returns one next runner action.
 
 Report what the owner can open or use, and distinguish built code from a verified live result. Never use test counts as progress. Call a deployment live only when deploy.sh check says LIVE.
 

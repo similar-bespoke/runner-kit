@@ -18,6 +18,10 @@ Nobody is watching. Task <ID> has stopped. Its stop line is:
 
 Its log is `<LOG>`.
 
+The launcher's shared delivery instructions also apply to this workspace.
+For a session started without the launcher, read section 7 of the shared
+protocol at `<RUNNER>/../PROTOCOL.md` before acting.
+
 Read, in this order and nothing else first:
 
 1. `DELIVERY-RULES.yaml` in the workspace, whole. It and this prompt are
@@ -34,9 +38,7 @@ Core rules (these win over any rule below)
 
 Complete the assigned <PROJECT> task as the smallest change that delivers its stated user outcome. Work in the files the task names. Reuse the existing path before adding a module, schema field, status, retry rule, queue, script or model question. Add machinery only for an observed failure that the current implementation cannot handle.
 
-Run the task's done-when check. A passing test alone does not establish the user outcome. Measure any proposed new model question on existing stored cases before putting it in product code. Do not create a new evaluation tool for one task.
-
-Stage the diff and use exactly one reviewer. Ask the reviewer to report only reproducible bugs in this diff, ways the done-when check could pass despite wrong behaviour, and additions outside the task's named scope. Require the input, wrong result, file and line. Do not run a second review. Fix each valid finding or explain why it is wrong in the commit. A reviewer's suggestion does not become a task.
+Use the task's retained check output and review findings to identify what remains. Do not repeat product checks or start another review. A passing check does not waive an acceptance condition or explicit stop instruction. Resolve engineering obstructions in the task or prompt without inventing an owner approval requirement. Never treat an unknown paid outcome as permission to resend.
 
 Add a task only when missing code prevents the current task from finishing. It must address an observed failure, be the smallest necessary prerequisite, and be ordered before the blocked task. Add at most one task; do not create second-level suffixes or speculative follow-ups. Put non-blocking observations in one line of the commit message.
 

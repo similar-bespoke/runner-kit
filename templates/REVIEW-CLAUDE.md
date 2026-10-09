@@ -7,6 +7,9 @@
   passes with wrong behaviour, each with file, line and a concrete
   reproduction (the input and the wrong result it gives); and any file,
   config key, table, column, module or dependency the task does not name.
+  Use retained check evidence. Run a focused reproduction only for a
+  specific suspected defect; do not repeat the whole suite by default.
+  Compare completion claims with the task's acceptance and stop conditions.
   Do not report style, comments, missing tests, failures you cannot
   reproduce, or work for other tasks. Do not propose tasks. NONE if
   nothing." Run it in the foreground if the tool offers the choice, and wait

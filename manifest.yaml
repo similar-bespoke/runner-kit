@@ -117,10 +117,10 @@ selftest:
     - "PASS (f) a task whose prerequisite is not done is stopped before a session starts"
     - "PASS (g) the commit check refused a live switch while an open task says the user would see something false"
     - "PASS (h) the commit check accepted a commit that keeps every rule"
-    - "PASS (i) run_task.sh counted a task done on its commit and its [x], with no agent"
-    - "PASS (j) a commit that broke the project's check was sent back to its session, and the task ended done only once the check passed"
+    - "PASS (i) run_task.sh counted a task done and delivered current shared instructions with an older workspace prompt, with no agent"
+    - "PASS (j) a broken check sent the session back with current shared instructions, and the task ended done only once the check passed"
     - "PASS (k) a check that already failed was reported to the owner, and the task ran and was marked as not judged against it"
-    - "PASS (l) a task that asked a question was parked, and a task that needs it was parked with it; a supervising entry under a new date did not release them; the owner's answer did, even when written while the stop session ran"
+    - "PASS (l) a stop session received current shared instructions with an older project prompt; parking and owner-only release held, including an answer during the stop session"
     - "PASS (m) three different tasks stopping one after another paused the queue and told the owner, and it went on only when told to; a task that a wrong setting stopped from starting paused it too, with no stop session"
     - "PASS (n) the configured notifier delivered a message"
     - "PASS (o) a task run by hand and a queue each reported themselves to a dashboard, with their output, what was delivered, the task file, the agent session at the task and the session in charge; a report without the token was refused; a name given to the runner was kept and one sent from another site refused; each reporter ended with its runner"
@@ -175,6 +175,7 @@ adapters:
 
 status:
   proven:
+    - "9 October 2026: selftest/run.sh --no-agent passed all fourteen deterministic checks and printed SELFTEST: PARTIAL. The adapter received current shared delivery instructions on a new task, a resume and a stop session while older workspace prompts and their project instructions were preserved. No real agent was started."
     - "zsh -n on every zsh script and python3 -m py_compile on both Python files pass."
     - "The self-test passes with the claude adapter (all fifteen lines, with a mid-tier model at medium effort, CLAUDE_TOOLS='Bash Read Edit Write Task' and CLAUDE_MCP=no: the session had those five tools and no MCP server, started its one reviewer, ran the project's check and committed), and prints PARTIAL with --no-agent."
     - "The dashboard, by the self-test's line (o), on one machine: a task run by hand and a queue each start a reporter; the dashboard shows the runner, its output lines, what it delivered and its task file; the agent session at the task is named by the identifier in the runner's own log, and the session recorded with --in-charge is named as in charge; a report without the token is refused with 401; a name given to a runner is tidied, kept and taken back, a name sent with the header of another site is refused with 403, and a name for a runner the dashboard does not hold with 404; each reporter ends with its runner and frees its lock. With the start line taken out of run_queue.sh in a copy of the kit, only line (o) fails, and likewise with the start line taken out of run_task.sh."
@@ -200,6 +201,7 @@ status:
   experimental:
     - "The codex adapter (see adapters.codex)."
   untested:
+    - "The 9 October 2026 delivery instructions changing real-agent behaviour, elapsed time, token usage or specification compliance. The loading path is proven with the stand-in adapter only."
     - "Linux, and any macOS shell setup where zsh is not on the PATH."
     - "notify-send on Linux."
     - "With a real agent: a stop session and its verdicts, and resuming a session. Both are proven only with the stand-in session."

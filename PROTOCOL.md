@@ -60,6 +60,8 @@ Rules for writing one:
 - It cites an observed failure (a run file, log line, live row or failing test) or an order from the owner. A hunch is one line in a commit message, never a task.
 - `Files:` lists every file. A session may touch another file only to call, register or import what the task builds.
 - A prerequisite is written `Needs <id>`. Only missing code counts as a prerequisite.
+- Before queueing paid work, inspect the named inputs, file scope and existing admission rules. Include the files needed for the outcome, including required call sites and tests. Keep the execution contract stable during a paid run; if it must change, preserve completed work and reconcile the change before further requests. This is preparation, not a new approval step.
+- `Done when:` names the observable result and sufficient evidence for it. Distinguish the outcome check from regression checks; one result may establish both. Require broader checks only when the changed behaviour or an authoritative contract calls for them.
 - A new model question (a new prompt or classifier question) is measured on stored cases first, as its own task with no product code. It is built only if it beats the current rule on the same cases.
 - An id has at most one suffix (`3.2a`, never `3.2a1`).
 - Status in the heading: `[ ]` not started, `[~]` built but held, `[x]` done with the commit hash. A done task keeps at most three lines of notes. Check output and review findings go in the commit message.
@@ -101,6 +103,28 @@ The letter and the effort are the largest cost choices anyone makes for a task. 
 6. It tells the owner when a task is done, how many built changes are not live, and the deploy command.
 
 ## 7. What a task session does
+
+The launcher includes the following shared instructions in every new task,
+resume and stop session, even when a workspace has older copied prompts.
+They replace conflicting generic workflow advice in those prompts. Current
+owner instructions, signed owner decisions and the task's acceptance contract
+retain their authority. Adapters receive the same instructions.
+
+<!-- runner-delivery-start -->
+## Shared delivery instructions
+
+These instructions replace conflicting generic workflow advice in copied workspace prompts. Current owner instructions, signed owner decisions and the task's acceptance contract take precedence.
+
+Before further paid work, inspect the task's inputs, permitted files and existing admission rules. Preserve completed work. If a requirement changes during execution, reconcile it with the retained result before sending further requests. Do not invent an approval step.
+
+Run required checks. Before adding or repeating an optional check, identify the unresolved failure it detects and the action its result would change. Reuse evidence only while relevant code, inputs, environment and dependencies remain unchanged. Keep independent runner checks and the single assigned review. Unit and regression fixtures use disposable state rather than a running service's mutable working state. Run required live acceptance separately within its authority. A timeout or unknown external outcome requires reconciliation, not a blind resend.
+
+Give the assigned reviewer the acceptance and stop conditions and retained check output. It runs a focused reproduction for a suspected defect rather than repeating the whole suite by default.
+
+Before claiming completion, reconcile the result with every acceptance condition and explicit stop instruction. A passing suite, screenshot tool or deployment is not sufficient by itself. A pre-existing fault does not waive an acceptance condition. Report a missing input or unresolved requirement precisely; continue independent authorised work. When the required outcome, checks and review findings are resolved, finish the commit and delivery handoff. Do not add research, checks or follow-up tasks without a specific unresolved need. No routine worksheet is required.
+
+A stop supervisor identifies the narrow obstruction and returns the nearest authorised runner action. It does not repeat the builder's checks, stage product changes or start a diff review. The builder and its single reviewer retain those jobs. Preserve the existing owner-review path when the task says `R: owner`.
+<!-- runner-delivery-end -->
 
 The session prompt, in order:
 

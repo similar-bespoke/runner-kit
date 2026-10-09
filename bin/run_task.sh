@@ -211,6 +211,9 @@ while [ $attempt -lt $MAX ]; do
     PROMPT="$(session_prompt)"
     say ""; say "attempt $attempt of $MAX: new session $SESSION"
   fi
+  # Shared instructions are read on every attempt, including resumes. Older
+  # workspace prompts need not be overwritten to receive the current workflow.
+  PROMPT="$(awk '/^<!-- runner-delivery-end -->$/{f=0} f{print} /^<!-- runner-delivery-start -->$/{f=1}' "$KIT/PROTOCOL.md")"$'\n\n'"$PROMPT"
   say "raw $RAW"
 
   STARTED=$SECONDS

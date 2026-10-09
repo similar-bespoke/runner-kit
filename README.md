@@ -54,6 +54,25 @@ Open `INSTALL-PROMPT.md`, copy everything below its line, and paste it into your
 
 To check a machine by hand: `bin/runner-doctor`. To run the self-test by hand: `selftest/run.sh --adapter claude --model <model id>`, or `selftest/run.sh --no-agent` on a machine with no signed-in agent. With `--no-agent` it still proves every commit check and the runner's own logic, using a stand-in session that spends nothing; only the one real task is skipped.
 
+## Delivery and verification
+
+`PROTOCOL.md` section 7 supplies short shared delivery instructions to every
+task attempt, including resumes, and every stop session. This happens before
+the adapter starts, so Claude Code, Codex and other adapters receive the same
+workflow. Existing workspace prompts and project-specific decisions are kept.
+The next invocation through this checkout receives the current instructions;
+an already running agent keeps the prompt it received. A session started by
+hand must read the shared protocol. A kit checkout pinned elsewhere must be
+updated separately.
+
+Tasks state the usable result and sufficient evidence. Optional repeated
+checks need a specific unresolved failure. Required checks and the single
+review remain. Completion must satisfy the task's actual acceptance and stop
+conditions, including faults present before the change. Stop supervisors use
+retained evidence to remove the narrow obstruction rather than repeating
+product checks. These changes follow the 5 to 9 October 2026 session audit;
+their effect on elapsed time, tokens and defect rates is not yet measured.
+
 ## Requirements
 
 - git

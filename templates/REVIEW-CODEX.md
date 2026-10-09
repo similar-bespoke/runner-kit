@@ -2,7 +2,7 @@
   run this one command, once, from the repository that holds the staged
   diff, and wait for it to finish:
 
-      codex exec review -m <MODEL> -c model_reasoning_effort="<REFFORT>" --ephemeral "Review the staged diff (git diff --cached) in this repository against task <ID> in <WORKSPACE>/TASKS.md. Report only defects in this diff: a bug, or a way the done-when check passes with wrong behaviour, each with file, line and a concrete reproduction (the input and the wrong result it gives); and any file, config key, table, column, module or dependency the task does not name. Do not report style, comments, missing tests, failures you cannot reproduce, or work for other tasks. Do not propose tasks. NONE if nothing."
+      codex exec review -m <MODEL> -c model_reasoning_effort="<REFFORT>" --ephemeral "Review the staged diff (git diff --cached) in this repository against task <ID> in <WORKSPACE>/TASKS.md. Report only defects in this diff: a bug, or a way the done-when check passes with wrong behaviour, each with file, line and a concrete reproduction (the input and the wrong result it gives); and any file, config key, table, column, module or dependency the task does not name. Use retained check evidence; run a focused reproduction only for a specific suspected defect, not the whole suite by default. Compare completion claims with the task's acceptance and stop conditions. Do not report style, comments, missing tests, failures you cannot reproduce, or work for other tasks. Do not propose tasks. NONE if nothing."
 
   It is this same Codex command-line tool, signed in to the same account as
   this session, and it sends the diff to the same service this session

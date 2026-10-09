@@ -145,6 +145,7 @@ supervise() {
   dirs=("$DIR")
   for r in "${REPO_LIST[@]}"; do repos+="${repos:+ and }\`${r:A}\`"; dirs+=("${r:A}"); done
   prompt="$(awk 'f{print} /^---$/{f=1}' "$DIR/SUPERVISOR-PROMPT.md")"
+  prompt="$(awk '/^<!-- runner-delivery-end -->$/{f=0} f{print} /^<!-- runner-delivery-start -->$/{f=1}' "$KIT/PROTOCOL.md")"$'\n\n'"$prompt"
   prompt="${prompt//'<ID>'/$id}"; prompt="${prompt//'<STOP>'/$stop}"; prompt="${prompt//'<LOG>'/$tasklog}"
   prompt="${prompt//'<PROJECT>'/$PROJECT}"; prompt="${prompt//'<WORKSPACE>'/$DIR}"
   prompt="${prompt//'<REPOS>'/$repos}"; prompt="${prompt//'<RUNNER>'/$BIN}"
