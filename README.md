@@ -104,7 +104,7 @@ safeguards can be claimed.
 - python3, 3.9 or newer (standard library only)
 - zsh, 5 or newer. The scripts are zsh and are not ported to another shell.
 - tmux, to run the queue unattended
-- At least one supported agent command-line tool, installed and signed in: Claude Code (`claude`) or Codex (`codex`)
+- At least one supported agent command-line tool, installed and signed in: Claude Code (run from `CLAUDE_BIN`, default `~/.local/bin/claude`, never a PATH lookup) or Codex (the ChatGPT app's bundled client, or `CODEX_BIN`)
 
 ## Watching the runners
 

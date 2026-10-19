@@ -18,8 +18,14 @@
 #                         yes, or unset, leaves them as the machine has them.
 
 AGENT_NAME="Claude Code"
-AGENT_BIN=claude
-AGENT_LOGIN_CMD="claude auth login"
+CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"   # absolute path, never a PATH lookup
+AGENT_BIN="$CLAUDE_BIN"
+_claude_bin_ok() {
+  [[ "$CLAUDE_BIN" == /* && -x "$CLAUDE_BIN" ]] && return 0
+  echo "STOP: CLAUDE_BIN must be an absolute path to an executable Claude Code binary (got: ${CLAUDE_BIN:-empty}). No fallback was attempted." >&2
+  return 2
+}
+AGENT_LOGIN_CMD="${(q)CLAUDE_BIN} auth login"
 AGENT_PRESET_SESSION=1     # the runner picks the session id (a UUID) before the first start
 
 # The command-line tool's own sign-in is the credential. API key variables in
@@ -29,25 +35,27 @@ unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
 # Optional operation: a check that fails in seconds. An alias such as "opus"
 # can resolve to an older model on an old command-line version, unnoticed.
 adapter_preflight() {
+  _claude_bin_ok || return 2
   [ -n "${CLAUDE_MIN_VERSION:-}" ] || return 0
   local ver
-  ver="$(command claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  ver="$("$CLAUDE_BIN" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
   if ! python3 -c 'import sys; v=lambda s: tuple(int(x) for x in s.split(".")); sys.exit(0 if v(sys.argv[1]) >= v(sys.argv[2]) else 1)' "${ver:-0.0.0}" "$CLAUDE_MIN_VERSION"; then
-    echo "STOP: Claude Code ${ver:-(unknown version)} is older than CLAUDE_MIN_VERSION=$CLAUDE_MIN_VERSION; run 'claude update', then start again." >&2
+    echo "STOP: Claude Code ${ver:-(unknown version)} is older than CLAUDE_MIN_VERSION=$CLAUDE_MIN_VERSION; run ${(q)CLAUDE_BIN} update, then start again." >&2
     return 1
   fi
 }
 
 # Operation 3: the signed-in check.
-adapter_signed_in() { command claude auth status 2>/dev/null | grep -q '"loggedIn": true'; }
+adapter_signed_in() { _claude_bin_ok || return 1; "$CLAUDE_BIN" auth status 2>/dev/null | grep -q '"loggedIn": true'; }
 
 _claude_run() {
+  _claude_bin_ok || return 2
   local -a flags=("$@"); local r
   for r in "${A_DIRS[@]}"; do [ "$r" = "$PWD" ] || flags+=(--add-dir "$r"); done
   [ -n "${CLAUDE_ALLOWED_TOOLS:-}" ] && flags+=(--allowedTools ${=CLAUDE_ALLOWED_TOOLS})
   [ -n "${CLAUDE_TOOLS:-}" ] && flags+=(--tools ${=CLAUDE_TOOLS})
   [ "${CLAUDE_MCP:-yes}" = no ] && flags+=(--strict-mcp-config)
-  command claude -p "$A_PROMPT" "${flags[@]}" --model "$A_MODEL" --effort "$A_EFFORT" \
+  "$CLAUDE_BIN" -p "$A_PROMPT" "${flags[@]}" --model "$A_MODEL" --effort "$A_EFFORT" \
     --permission-mode acceptEdits \
     --output-format stream-json --verbose
 }
