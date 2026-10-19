@@ -17,6 +17,8 @@
 #   (o) a task run by hand and a queue each report themselves to a dashboard
 #       started here on this machine (dashboard/serve.py), and stop reporting
 #       when they end
+# (p) originating supervision and delivered user acceptance at command and
+#     process boundaries, with local stand-ins and no real coordinator sends
 # Every other line runs with the dashboard switched off, so the toy project
 # never appears on a dashboard the machine is set to report to.
 # Standard output is exactly one line per fact, then one final line:
@@ -417,7 +419,7 @@ note ""; note "==== (k) task 2.3 with the check failing before it starts"
 : > "$APP/src/BROKEN"; git -C "$APP" add -A && git -C "$APP" commit -q -m "a commit made outside the runner that breaks the check"
 ( cd "$WS" && "$BIN/run_task.sh" 2.3 2 ) >> "$OUT" 2>&1; RC=$?
 sleep 1
-if [ $RC = 0 ] && grep -q "check fails before task 2.3 starts" "$WS/runs/notify.log" && grep -q "task 2.3 done.*was not judged against it" "$WS/runs/notify.log"; then
+if [ $RC = 0 ] && grep -q "check fails before task 2.3 starts" "$WS/runs/notify.log" && grep -q "task 2.3 built.*was not judged against it" "$WS/runs/notify.log"; then
   pass k "a check that already failed was reported to the owner, and the task ran and was marked as not judged against it"
 else fail k "a failing check before task 2.3 was not handled (exit $RC)"; fi
 git -C "$APP" rm -q src/BROKEN && git -C "$APP" commit -q -m "the check passes again"
@@ -495,8 +497,8 @@ if [ $RC != 0 ] || [ -z "$LINE" ]; then
   fail n "the $NOTIFY_NAME notifier did not deliver the message (exit $RC)"
 elif [[ "$ROUTE" == *failed* ]]; then
   fail n "the $NOTIFY_NAME notifier failed ($ROUTE)"
-elif [ $AGENT = 1 ] && [ $SKIPPED = 0 ] && ! grep -q "task 1.1 done" "$WS/runs/notify.log"; then
-  fail n "the runner's own done message for task 1.1 is not in runs/notify.log"
+elif [ $AGENT = 1 ] && [ $SKIPPED = 0 ] && ! grep -q "task 1.1 built" "$WS/runs/notify.log"; then
+  fail n "the runner's own build message for task 1.1 is not in runs/notify.log"
 else
   pass n "the configured notifier delivered a message"
 fi
@@ -578,6 +580,10 @@ kill $DPID 2>/dev/null
 note "dashboard at ${DURL:-nowhere}: ${O_BAD:- nothing wrong}"
 if [ -z "$O_BAD" ]; then pass o "a task run by hand and a queue each reported themselves to a dashboard, with their output, what was delivered, the task file, the agent session at the task and the session in charge; a report without the token was refused; a name given to the runner was kept and one sent from another site refused; each reporter ended with its runner"
 else fail o "reporting to a dashboard went wrong:$O_BAD"; fi
+
+if python3 "$KIT/selftest/supervision.py" >> "$OUT" 2>&1; then
+  pass p "originating supervision, process intervention, independent tasks, coordinator messages and delivered-user acceptance held at their observable boundaries"
+else fail p "supervision or delivered-user acceptance failed; see $OUT"; fi
 
 if [ $FAILED = 1 ]; then print "SELFTEST: FAIL"; exit 1; fi
 [ $KEEP = 1 ] || [ -n "$BASE" ] || rm -rf "$T"

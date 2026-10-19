@@ -4,7 +4,7 @@
 # the answers to interview.yaml.
 kit:
   name: runner-kit
-  version: 0.3.1
+  version: 0.4.1
   licence: GPL-3.0
   summary: "A task runner for coding agents: a written queue of small tasks, one fresh unattended session per task, rules enforced by code at commit time."
 
@@ -25,7 +25,7 @@ requirements:
   - name: an agent command-line tool, installed and signed in
     any_of:
       - {adapter: claude, command: claude, signed_in_check: "claude auth status", sign_in: "claude auth login"}
-      - {adapter: codex, command: codex, signed_in_check: "codex login status", sign_in: "codex login"}
+      - {adapter: codex, command: "<kit>/bin/runner-codex", signed_in_check: "<kit>/bin/runner-codex login status", sign_in: "<kit>/bin/runner-codex login"}
   - all_at_once: "<kit>/bin/runner-doctor"
 
 files:
@@ -39,6 +39,7 @@ files:
   - {path: .gitignore, purpose: "Keeps runs/ and temporary files out of the kit's git history.", installs_to: "stays in the kit"}
   - {path: LICENSE, purpose: "The GNU General Public License, version 3.", installs_to: "stays in the kit"}
   - {path: bin/run_queue.sh, purpose: "Walks the queue, one task at a time; starts a stop session when a task stops.", installs_to: "stays in the kit; run from the workspace"}
+  - {path: bin/runner-codex, purpose: "One newer selected Codex client for builds, resumes, reviews and account checks; explicit models and no automatic fallback.", installs_to: "stays in the kit; called by the Codex adapter and assigned reviewer"}
   - {path: bin/run_task.sh, purpose: "Runs one task to its commit, retrying and resuming.", installs_to: "stays in the kit; run from the workspace"}
   - {path: bin/runner_checks.py, purpose: "The commit checks and the prerequisite check.", installs_to: "stays in the kit; called by the pre-commit hook and by run_task.sh"}
   - {path: bin/render_stream.py, purpose: "Turns an agent's event stream into one readable log line per event.", installs_to: "stays in the kit"}
@@ -46,6 +47,11 @@ files:
   - {path: bin/runner-doctor, purpose: "Checks the requirements, the agents and, given a runner.conf, a project's settings and hooks. Changes nothing.", installs_to: "stays in the kit"}
   - {path: bin/runner-queue, purpose: "Shows the task in hand, parked tasks and tasks remaining.", installs_to: "stays in the kit; run from the workspace"}
   - {path: bin/runner-notify, purpose: "Sends one message through the notifier named by NOTIFY.", installs_to: "stays in the kit"}
+  - {path: bin/runner_watch.py, purpose: "Originating-session reviews, process intervention, retained coordinator messages and delivered user acceptance.", installs_to: "stays in the kit; called by launchers and the originating session"}
+  - {path: docs/supervision.md, purpose: "Supervision, message receipt and delivered acceptance contracts.", installs_to: "stays in the kit; read by both skills"}
+  - {path: selftest/supervision.py, purpose: "Deterministic command, process, queue and notification boundary checks with fake recipients.", installs_to: "stays in the kit; selftest/run.sh line (p)"}
+  - {path: skills/claude/SKILL.md, purpose: "Claude runner-kit skill with originating-session oversight.", installs_to: "the authorised Claude runner-kit skill directory"}
+  - {path: skills/codex/SKILL.md, purpose: "Codex runner-kit skill with originating-session oversight.", installs_to: "the authorised Codex runner-kit skill directory, with its references directory"}
   - {path: bin/runner_report.py, purpose: "Tells a dashboard what one runner is doing: reads the workspace's files every two seconds and sends what changed. Does nothing when no dashboard is set. Where its state arrives and a file does not, it names the file on the dashboard, sends the rest, and sends logs in smaller pieces. With --in-charge, records the supervising session that runs it as the session in charge of the runner.", installs_to: "stays in the kit; started by run_queue.sh and run_task.sh, or by hand to attach to a queue already running"}
   - {path: dashboard/serve.py, purpose: "The runner dashboard: takes what runners report and serves the page that shows them.", installs_to: "stays in the kit; run on the one machine every runner can reach"}
   - {path: dashboard/index.html, purpose: "The dashboard's page: one pane for each runner, with what it has delivered, its live output and its task list.", installs_to: "stays in the kit; served by dashboard/serve.py"}
@@ -107,7 +113,7 @@ selftest:
   other_forms:
     - "<kit>/selftest/run.sh --adapter <adapter> --model <model id> [--effort medium] [--notify none|desktop|command]"
     - "<kit>/selftest/run.sh --no-agent"
-  what_it_does: "Builds a toy code repository and a toy workspace in a temporary directory, initialises them with the kit and proves fifteen facts. Line (b) starts one real agent session with the default builder; every other line spends nothing. Lines (c) to (h) make real commits against the hook. Lines (i) to (m) run run_task.sh and run_queue.sh with a stand-in session (adapters/stub.sh). Line (o) starts a dashboard on this machine, on a free port, and stops it again; every other line runs with the dashboard switched off, so the toy project never shows on a dashboard the machine reports to. Nothing outside the temporary directory is changed. Details are in selftest.log there; the path is printed on standard error."
+  what_it_does: "Builds a toy code repository and a toy workspace in a temporary directory, initialises them with the kit and proves sixteen facts. Line (b) starts one real agent session with the default builder; every other line spends nothing. Lines (c) to (h) make real commits against the hook. Lines (i) to (m) run run_task.sh and run_queue.sh with a stand-in session (adapters/stub.sh). Line (o) starts a dashboard on this machine, on a free port, and stops it again; every other line runs with the dashboard switched off, so the toy project never shows on a dashboard the machine reports to. Nothing outside the temporary directory is changed. Details are in selftest.log there; the path is printed on standard error."
   expected_output:
     - "PASS (a) a dry queue pass picks the first task"
     - "PASS (b) the default builder ran a task to a commit whose subject starts with the task id, and the heading is marked [x]"
@@ -175,6 +181,13 @@ adapters:
 
 status:
   proven:
+    - "19 October 2026: a real builder and its single reviewer both used gpt-6.1-sol through the selected bundled client 0.162.0-alpha.17.2. A standard older copied review prompt was routed through runner-codex. The task committed 359114d4f975c02170831cf2e709f3e57f74e2e8 in the disposable local tool. The originating session independently ran its delivered command, checked both exact output lines, inspected the actual reviewer command and selected model, and completed verify/review/deliver. No model substitution occurred."
+    - "19 October 2026: all twenty-one supervision/client boundary checks passed. Deterministic client checks cover start, resume and review using the same explicitly selected client/model; refusal of an old client and an unpinned model; no fallback after a failed selected-model request; and project settings loaded before runner-doctor account checks. The latter was a concrete finding from the single gpt-6.1-sol code review and is fixed with a focused regression case."
+    - "19 October 2026: after the sub-agent reproduced the unsupported-model failure, all sixteen selftest/supervision.py boundary checks passed. Codex invalid-request/model-unsupported rejections now require an originating-session decision instead of a timed provider retry; other eligible work can continue."
+    - "19 October 2026: selftest/run.sh --no-agent passed every deterministic slot, including the fifteen supervision boundary checks, and printed SELFTEST: PARTIAL because its real-agent slot was skipped. A separate real Codex acceptance below establishes the foreground task/review path."
+    - "19 October 2026: a real Codex task on supported gpt-5.6-sol resumed under the actual originating Codex session, preserved its staged one-line change, completed its assigned review and committed a7eeb32dd444b2f78c442d75a3cdec8a96ec3f1f in a disposable local tool. The originating session independently ran the delivered command, compared both output lines with the requested result, reviewed the saved acceptance and completed verify/review/deliver. The fixture used a fake coordinator for final delivery. Evidence remains under /private/var/folders/h1/fp5kh5bx5q3dlhr3bn5yl6xm0000gn/T/runner-real-origin-tysii6mu/work/runs/."
+    - "19 October 2026: the real notify-coordinator helper accepted the actual runner-kit verification blocker; Will confirmed it appeared in Coding Coordinator. This verifies one real message through the configured route, not future service availability."
+    - "19 October 2026: selftest/supervision.py passed fifteen deterministic command, process, queue and notification checks with local stand-ins. They cover wrong-origin refusal, active intervention, retained work, child-process termination, continued useful quiet work, independent task progress, one sign-in question, concurrent message delivery, reconciliation of uncertain sends, separate workspace configuration and refusal of stale or unreviewed delivery proof. No real coordinator message or provider request was used by these checks."
     - "9 October 2026: selftest/run.sh --no-agent passed all fourteen deterministic checks and printed SELFTEST: PARTIAL. The adapter received current shared delivery instructions on a new task, a resume and a stop session while older workspace prompts and their project instructions were preserved. No real agent was started."
     - "zsh -n on every zsh script and python3 -m py_compile on both Python files pass."
     - "The self-test passes with the claude adapter (all fifteen lines, with a mid-tier model at medium effort, CLAUDE_TOOLS='Bash Read Edit Write Task' and CLAUDE_MCP=no: the session had those five tools and no MCP server, started its one reviewer, ran the project's check and committed), and prints PARTIAL with --no-agent."
@@ -201,6 +214,9 @@ status:
   experimental:
     - "The codex adapter (see adapters.codex)."
   untested:
+    - "The new supervision wrapper with a real Claude task; Claude was signed out during 19 October 2026 verification."
+    - "The 19 October 2026 supervision rules preventing semantic drift or unnecessary engineering across prolonged real Claude/Codex work. Deterministic intervention is tested; judgement quality requires the originating session to review actual evidence."
+    - "An unattended recurring wake-up into an originating Claude session, and a Codex heartbeat continuing supervision across desktop or host failure. Configure and verify the supported mechanism for each project before claiming coverage."
     - "The 9 October 2026 delivery instructions changing real-agent behaviour, elapsed time, token usage or specification compliance. The loading path is proven with the stand-in adapter only."
     - "Linux, and any macOS shell setup where zsh is not on the PATH."
     - "notify-send on Linux."

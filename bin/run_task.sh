@@ -50,6 +50,7 @@ export RUNNER_TASK_ID="$ID"   # the git pre-commit hooks run runner_checks.py fo
 DIR="${WORKSPACE:A}"; REPO_LIST=(${=REPOS}); REPO="${REPO_LIST[1]:A}"
 TASKS="$DIR/TASKS.md"; PROMPT_FILE="$DIR/SESSION-PROMPT.md"
 RUNS="$DIR/runs"; mkdir -p "$RUNS"
+python3 "$BIN/runner_watch.py" check || exit 2
 STATE="$RUNS/$ID.session"
 say() { echo "$@" | tee -a "$LOG"; }
 
@@ -78,6 +79,12 @@ VAR="ADAPTER_$LETTER"; ADAPTER="${(P)VAR:-}"
 [ -n "$MODEL" ] || { echo "STOP: runner.conf has no model id for the letter $LETTER (MODEL_$LETTER)" >&2; exit 2; }
 [ -f "$KIT/adapters/$ADAPTER.sh" ] || { echo "STOP: no adapter file $KIT/adapters/$ADAPTER.sh (ADAPTER_$LETTER=$ADAPTER)" >&2; exit 2; }
 REFFORT="$(echo "$HEADING" | sed -n 's/.*R: [A-Z] \([a-z]*\).*/\1/p')"; REFFORT="${REFFORT:-high}"
+RLETTER="$(echo "$HEADING" | sed -n 's/.*R: \([A-Z]\) .*/\1/p')"
+REVIEW_MODEL="$MODEL"
+if [ -n "$RLETTER" ]; then
+  VAR="MODEL_$RLETTER"; REVIEW_MODEL="${(P)VAR:-}"
+  [ -n "$REVIEW_MODEL" ] || { echo "STOP: runner.conf has no pinned reviewer model for $RLETTER" >&2; exit 2; }
+fi
 
 # ---- pre-flight: fail in seconds, not minutes
 source "$KIT/adapters/$ADAPTER.sh"
@@ -85,9 +92,9 @@ AGENT="$AGENT_NAME"; LOGIN_CMD="$AGENT_LOGIN_CMD"
 command -v "$AGENT_BIN" >/dev/null || { echo "STOP: the $AGENT_BIN command is not installed." >&2; exit 2; }
 if (( $+functions[adapter_preflight] )); then adapter_preflight || exit 2; fi
 if ! adapter_signed_in; then
-  echo "not signed in to $AGENT. Run:  $LOGIN_CMD   (this script waits and checks every ten minutes)." >&2
-  LOG=/dev/null; notify "$PROJECT runner: this machine is not signed in to $AGENT. Run '$LOGIN_CMD' there; the runner waits."; wait
-  while ! adapter_signed_in; do sleep 600; done
+  printf 'RUNNER: question Please sign in to %s on the runner machine with %s. Other independent work can continue.\n' "$AGENT" "$LOGIN_CMD" > "$RUNS/$ID.stop"
+  [ "${RUNNER_QUEUED:-0}" = 1 ] || python3 "$BIN/runner_watch.py" event needs_input --task "$ID" --summary "Your sign-in is needed before work on $PROJECT can continue." --next "Run $LOGIN_CMD on the runner machine."
+  exit 3
 fi
 # A task's commit may land in a code repository or in the repository that
 # holds the workspace (TASKS.md lives there), so all are checked.
@@ -116,7 +123,8 @@ run_check() {
   key="$( for r in "${ALL[@]}"; do git -C "$r" rev-parse HEAD; git -C "$r" status --porcelain --untracked-files=no; done | sha | cut -d' ' -f1 )"
   last="$(cat "$RUNS/check.last" 2>/dev/null)"
   if [ "${last%% *}" = "$key" ]; then CHECK_RC="${last##* }"; return 0; fi
-  ( cd "$REPO" && zsh -c "$CHECK_CMD" ) > "$RUNS/check.log" 2>&1; CHECK_RC=$?
+  ( cd "$REPO" && python3 "$BIN/runner_watch.py" run --task "$ID" --phase 'project check' -- zsh -c "$CHECK_CMD" ) > "$RUNS/check.log" 2>&1; CHECK_RC=$?
+  [ "$CHECK_RC" != 75 ] || exit 4
   print -r -- "$key $CHECK_RC" > "$RUNS/check.last"
 }
 CHECK_BEFORE="not run: runner.conf sets no CHECK_CMD"
@@ -161,11 +169,25 @@ check_done() {
 
 # The first message of a new session: SESSION-PROMPT.md below its --- line,
 # with the reviewer step for this adapter and the settings filled in.
+review_prompt() {
+  local review="$(cat "$DIR/REVIEW-${(U)ADAPTER}.md")"
+  if echo "$HEADING" | grep -q 'R: owner'; then
+    print -r -- 'The owner is the reviewer. Start no agent reviewer; stop at [~] for the owner.'
+    return
+  fi
+  # Older workspace copies still name bare `codex`. Route that standard
+  # review command through the same selected client as the builder.
+  review="${review//'codex exec review'/'<CODEX> exec review'}"
+  review="${review//'<CODEX>'/\"$BIN/runner-codex\"}"
+  review="${review//'<ID>'/$ID}"; review="${review//'<WORKSPACE>'/$DIR}"
+  review="${review//'<MODEL>'/$REVIEW_MODEL}"; review="${review//'<REFFORT>'/$REFFORT}"
+  print -r -- "$review"
+}
 session_prompt() {
   local p review repos="" r
   for r in "${ALL[@]}"; do repos+="${repos:+ and }\`$r\`"; done
   p="$(awk 'f{print} /^---$/{f=1}' "$PROMPT_FILE")"
-  review="$(cat "$DIR/REVIEW-${(U)ADAPTER}.md")"
+  review="$(review_prompt)"
   p="${p//'<REVIEW>'/$review}"
   p="${p//'<ID>'/$ID}"; p="${p//'<PROJECT>'/$PROJECT}"; p="${p//'<WORKSPACE>'/$DIR}"
   p="${p//'<REPOS>'/$repos}"; p="${p//'<RUNNER>'/$BIN}"
@@ -184,9 +206,19 @@ start_session() {
   A_DIRS=("$DIR" "${ALL[@]}")
   if [ "$RESUME" = 1 ]; then op=adapter_resume
   elif [ "${AGENT_PRESET_SESSION:-0}" = 1 ]; then echo "$SESSION" > "$STATE"; fi
-  ( cd "$REPO" && $op 2>&1; echo $? > "$EXITF" ) \
+  export RUNNER_AGENT_PROMPT="$A_PROMPT" RUNNER_AGENT_MODEL="$A_MODEL" RUNNER_AGENT_EFFORT="$A_EFFORT" RUNNER_AGENT_SESSION="$A_SESSION"
+  ( cd "$REPO" && python3 "$BIN/runner_watch.py" run --task "$ID" --phase 'building and reviewing' -- zsh -c '
+      source "$RUNNER_CONF"; source "$1"
+      A_PROMPT="$RUNNER_AGENT_PROMPT"; A_MODEL="$RUNNER_AGENT_MODEL"; A_EFFORT="$RUNNER_AGENT_EFFORT"
+      A_SESSION="$RUNNER_AGENT_SESSION"; A_TASK_ID="$RUNNER_TASK_ID"; shift
+      op="$1"; shift; A_DIRS=("$@"); $op
+    ' runner-agent "$KIT/adapters/$ADAPTER.sh" "$op" "$DIR" "${ALL[@]}" 2>&1; echo $? > "$EXITF" ) \
     | tee "$RAW" | python3 -u "$BIN/render_stream.py" | tee -a "$LOG"
   STATUS="$(cat "$EXITF" 2>/dev/null || echo 1)"; rm -f "$EXITF"
+  if [ "$STATUS" = 75 ]; then
+    say "Work preserved for the originating session's intervention."
+    exit 4
+  fi
   adapter_read_result "$RAW" RUNNER
   if [ ! -f "$STATE" ] && [ -n "${RESULT_SESSION:-}" ]; then   # the agent named the session itself
     SESSION="$RESULT_SESSION"; echo "$SESSION" > "$STATE"
@@ -210,6 +242,9 @@ while [ $attempt -lt $MAX ]; do
     [ "${AGENT_PRESET_SESSION:-0}" = 1 ] && SESSION="$(python3 -c 'import uuid;print(uuid.uuid4())')"
     PROMPT="$(session_prompt)"
     say ""; say "attempt $attempt of $MAX: new session $SESSION"
+  fi
+  if [ "$RESUME" = 1 ]; then
+    PROMPT+=$'\n\n'"Current assigned reviewer instructions (these replace older launcher model values, not the task's scope or acceptance):"$'\n'"$(review_prompt)"
   fi
   # Shared instructions are read on every attempt, including resumes. Older
   # workspace prompts need not be overwritten to receive the current workflow.
@@ -285,7 +320,8 @@ while [ $attempt -lt $MAX ]; do
       fi
     fi
     say "  not live:   ${PENDING:- nothing}"
-    notify "$PROJECT task $ID done: $COMMIT ($attempt attempt$([ $attempt = 1 ] || echo s); last session $USED). $(remaining).$PENDING$UNCHECKED"
+    notify "$PROJECT task $ID built: $COMMIT ($attempt attempt$([ $attempt = 1 ] || echo s); last session $USED). $(remaining).$PENDING$UNCHECKED"
+    python3 "$BIN/runner_watch.py" event built --task "$ID" --summary "Code has been committed for: $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from runner_watch import Watch; print(Watch().task(sys.argv[2]))' "$BIN" "$ID")." --next 'The originating session must verify the delivered result as its intended user.' --evidence "$COMMIT"
     wait; exit 0
   fi
 
@@ -305,8 +341,17 @@ while [ $attempt -lt $MAX ]; do
   fi
 
   # ---- classify the failure from the session's own result (adapter_read_result)
+  if [ "$RESULT_KIND" = config ]; then
+    say "STOP: the configured model or request is unavailable to this client. Correct the setting before retrying."
+    if [ "${SUPERVISION_REQUIRED:-no}" = yes ]; then
+      python3 "$BIN/runner_watch.py" hold --task "$ID" --reason "The command-line account rejected the configured model or request. The originating session must check its available models and correct runner.conf before retrying."
+      wait; exit 4
+    fi
+    wait; exit 2
+  fi
   if [ "$RESULT_KIND" = auth ]; then
     say "STOP: authentication failed. Run:  $LOGIN_CMD   then run this again (the session resumes)."
+    printf 'RUNNER: question Please sign in to %s on the runner machine with %s. Other independent work can continue.\n' "$AGENT" "$LOGIN_CMD" > "$RUNS/$ID.stop"
     notify "$PROJECT runner stopped on task $ID: $AGENT sign-in expired. Run '$LOGIN_CMD' on this machine, then run the task again."
     wait; exit 3
   fi
@@ -356,13 +401,17 @@ if at <= now:
 print(int((at - now).total_seconds()) + 300)
 PY2
 )"
-    say "usage limit reached; sleeping ${WAIT}s until it resets (not an attempt)."
+    say "usage limit reached; deferring this adapter for ${WAIT}s until it resets."
     notify "$PROJECT runner on task $ID: $AGENT usage limit reached; it resumes by itself after the reset."
-    sleep "$WAIT"; attempt=$((attempt-1)); continue
+    print -r -- "$(( $(date +%s) + WAIT ))" > "$RUNS/available-$ADAPTER"
+    printf 'RUNNER: blocked %s usage resumes after its reset; other available agents can continue.\n' "$AGENT" > "$RUNS/$ID.stop"
+    exit 4
   fi
   if [ "$RESULT_KIND" = transient ]; then
-    say "transient failure ($RESULT_REASON). Waiting ${backoff}s, then resuming."
-    sleep $backoff; backoff=$((backoff*2)); continue
+    say "transient failure ($RESULT_REASON). Deferring this adapter for ${backoff}s; independent work can continue."
+    print -r -- "$(( $(date +%s) + backoff ))" > "$RUNS/available-$ADAPTER"
+    printf 'RUNNER: blocked Temporary provider failure; other independent work can continue.\n' > "$RUNS/$ID.stop"
+    exit 4
   fi
   say "session ended without the task's commit (exit $STATUS, uncommitted changed files: $DIRTY). Resuming."
   sleep 5

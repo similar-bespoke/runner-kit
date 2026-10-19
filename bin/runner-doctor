@@ -10,6 +10,12 @@ ok()   { print -r -- "ok       $*"; }
 bad()  { print -r -- "MISSING  $*"; BAD=1; }
 warn() { print -r -- "WARN     $*"; }
 
+# The selected project client must also be used by the account checks below.
+if [ -n "${1:-}" ]; then
+  [ -f "$1" ] || { bad "settings file $1"; exit 1; }
+  export RUNNER_CONF="${1:A}"; source "$RUNNER_CONF"
+fi
+
 command -v git >/dev/null && ok "git ($(git --version | awk '{print $3}'))" || bad "git"
 if command -v python3 >/dev/null && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'; then
   ok "python3 ($(python3 -c 'import platform; print(platform.python_version())'))"
@@ -44,8 +50,6 @@ dashboard() {
 if [ -z "${1:-}" ]; then
   ( unset RUNNER_CONF; cd /; dashboard )
 else
-  [ -f "$1" ] || { bad "settings file $1"; exit 1; }
-  export RUNNER_CONF="${1:A}"; source "$RUNNER_CONF"
   [ -n "${PROJECT:-}" ] && ok "PROJECT=$PROJECT" || bad "PROJECT is empty"
   if [ -d "${WORKSPACE:-}" ] && git -C "$WORKSPACE" rev-parse --show-toplevel >/dev/null 2>&1; then ok "WORKSPACE is inside a git repository"
   else bad "WORKSPACE (${WORKSPACE:-empty}) must be a directory inside a git repository"; fi
@@ -68,10 +72,20 @@ else
     *) bad "NOTIFY must be none, desktop or command (it is $NOTIFY)";;
   esac
   dashboard
-  USABLE=()
+  if said="$(python3 "$BIN/runner_watch.py" check 2>&1)"; then
+    if [ "${SUPERVISION_REQUIRED:-no}" = yes ]; then ok "$said"
+    else warn "$said; read docs/supervision.md before claiming active oversight"; fi
+  else bad "$said"; fi
+  USABLE=(); CODEX_CHECKED=0
   for var in ${(k)parameters[(I)ADAPTER_[A-Z]]}; do
     L="${var#ADAPTER_}"; A="${(P)var}"; MV="MODEL_$L"; M="${(P)MV:-}"
     [ -n "$A" ] || continue
+    if [ "$A" = codex ] && [ "$CODEX_CHECKED" = 0 ]; then
+      CODEX_CHECKED=1
+      if said="$(source "$KIT/adapters/codex.sh"; adapter_preflight 2>&1)"; then
+        ok "Codex client ${CODEX_BIN:-/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex}: $said"
+      else bad "$said"; fi
+    fi
     if [ ! -f "$KIT/adapters/$A.sh" ]; then bad "ADAPTER_$L=$A has no file adapters/$A.sh"
     elif [ -z "$M" ]; then warn "letter $L: MODEL_$L is empty, so tasks with M: $L cannot run"
     elif (( ! ${SIGNED[(Ie)$A]} )); then warn "letter $L: agent $A is not signed in"

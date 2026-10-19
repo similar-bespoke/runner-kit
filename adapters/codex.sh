@@ -1,14 +1,15 @@
-# Adapter: Codex (command `codex`). Sourced by bin/run_task.sh and
+# Adapter: Codex through bin/runner-codex. Sourced by bin/run_task.sh and
 # bin/run_queue.sh; never run by itself. The contract is in TEMPLATE.sh.
 # Status: experimental. The known limits are listed in manifest.yaml.
 
 AGENT_NAME="Codex"
-AGENT_BIN=codex
-AGENT_LOGIN_CMD="codex login"
+AGENT_BIN="${${(%):-%x}:A:h:h}/bin/runner-codex"
+AGENT_LOGIN_CMD="\"$AGENT_BIN\" login"
 AGENT_PRESET_SESSION=0     # Codex names the session itself, in its first event
 
 # Operation 3: the signed-in check.
-adapter_signed_in() { command codex login status 2>&1 | grep -q "Logged in"; }
+adapter_preflight() { "$AGENT_BIN" --version; }
+adapter_signed_in() { "$AGENT_BIN" login status 2>&1 | grep -q "Logged in"; }
 
 # Codex runs non-interactively with its events as JSON lines, in its
 # workspace-write sandbox. The directories in A_DIRS and the .git directory of
@@ -33,8 +34,8 @@ _codex_flags() {
 }
 
 # Operation 1: start a session. Operation 2: resume it.
-adapter_start()  { local -a CODEX_FLAGS; _codex_flags; command codex exec "${CODEX_FLAGS[@]}" "$A_PROMPT" </dev/null; }
-adapter_resume() { local -a CODEX_FLAGS; _codex_flags; command codex exec resume "$A_SESSION" "${CODEX_FLAGS[@]}" "$A_PROMPT" </dev/null; }
+adapter_start()  { local -a CODEX_FLAGS; _codex_flags; "$AGENT_BIN" exec "${CODEX_FLAGS[@]}" "$A_PROMPT" </dev/null; }
+adapter_resume() { local -a CODEX_FLAGS; _codex_flags; "$AGENT_BIN" exec resume "$A_SESSION" "${CODEX_FLAGS[@]}" "$A_PROMPT" </dev/null; }
 
 # Operation 4: read the result and the session id from the raw event stream.
 # The session id is the thread_id of the first event; the last words are the
@@ -55,7 +56,12 @@ for line in open(sys.argv[1], errors="replace"):
     elif e.get("type") == "turn.failed":
         reason = str((e.get("error") or {}).get("message") or "turn failed")[:300]
         low = reason.lower()
-        kind = "auth" if ("401" in low or "unauthorized" in low or "authenticat" in low or "log in" in low or "login" in low) else "transient"
+        if "401" in low or "unauthorized" in low or "authenticat" in low or "log in" in low or "login" in low:
+            kind = "auth"
+        elif "not supported" in low or "model_not_found" in low or "invalid_request_error" in low:
+            kind = "config"
+        else:
+            kind = "transient"
         text = text or reason
 if sys.argv[2] == "SUPERVISOR":
     m = re.findall(r"^\s*(SUPERVISOR: *(?:retry|run|waiting|skip)\b.*)$", text, re.M)

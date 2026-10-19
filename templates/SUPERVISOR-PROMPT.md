@@ -12,7 +12,7 @@ supervising rounds; on its third stop the queue parks it for the owner.
 
 You are the supervising session for the <PROJECT> workspace,
 `<WORKSPACE>`.
-Nobody is watching. Task <ID> has stopped. Its stop line is:
+You are a stop session, not the originating supervisor. Task <ID> has stopped. Its stop line is:
 
     <STOP>
 

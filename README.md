@@ -73,6 +73,31 @@ retained evidence to remove the narrow obstruction rather than repeating
 product checks. These changes follow the 5 to 9 October 2026 session audit;
 their effect on elapsed time, tokens and defect rates is not yet measured.
 
+## Codex client and model
+
+Builders and reviewers default to `gpt-6.1-sol`. Both use `bin/runner-codex`,
+which selects the newer client bundled with the ChatGPT desktop app.
+`CODEX_BIN` can select another absolute path to Codex 0.162.0 or newer.
+There is no fallback to an older executable or another model. A model change
+or downgrade requires the owner's explicit permission. See
+[the client and model contract](docs/supervision.md#selected-codex-client-and-model).
+
+## Active oversight and Coding Coordinator
+
+[Supervision and verified delivery](docs/supervision.md) describes the common
+hooks for all adapters. The originating session reviews work while it runs,
+can interrupt an unproductive builder, reviewer or check, and can let other
+eligible tasks continue. Missing supervision yields the active work while
+preserving files and logs. It is separate from the dashboard label.
+
+New projects require the real originating session, a working recurring wake-up,
+the existing Coding Coordinator helper and an actual delivered user check.
+Only verified goal delivery sends a completion message. Blockers and questions
+also reach Coding Coordinator; routine progress stays with the supervisor.
+Messages are retained until webhook acceptance, with uncertain sends reconciled
+before retrying. Existing projects require an explicit migration before these
+safeguards can be claimed.
+
 ## Requirements
 
 - git

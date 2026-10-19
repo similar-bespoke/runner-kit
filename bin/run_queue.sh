@@ -93,9 +93,17 @@ heading() { grep -m1 "^### ${1//./\\.} " "$TASKS"; }
 
 # Park a task for the owner: the waiting file holds the DECISIONS.md hash, then why.
 park() {
-  local id="$1" why="$2" hash="${3:-}"
+  local id="$1" why="$2" hash="${3:-}" kind=attention summary next_action
   { print -r -- "${hash:-$(decisions_hash)}"; print -r -- "$why"; } > "$WAITING/$id"
   log "task $id parked: $why"
+  case "$why" in
+    "needs "*", which waits") return 0;; # The prerequisite already carries the question.
+    "RUNNER: question "*|"SUPERVISOR: waiting "*|"the owner's task"*|"built, waits for the owner's yes"*) kind=needs_input;;
+  esac
+  summary="Work has stopped on: $(heading "$id" | sed 's/^### [^ ]* //; s/ \[.*//')."
+  [ "$kind" != needs_input ] || summary="Your input is needed for: $(heading "$id" | sed 's/^### [^ ]* //; s/ \[.*//')."
+  next_action="$(print -r -- "$why" | sed -E 's/^RUNNER: question //; s/^SUPERVISOR: waiting [^ ]+ //')"
+  [ "$DRY" = 1 ] || python3 "$BIN/runner_watch.py" event "$kind" --task "$id" --summary "$summary" --next "$next_action"
 }
 
 # Insert ids into the queue file immediately before the line naming <target>,
@@ -151,10 +159,15 @@ supervise() {
   prompt="${prompt//'<REPOS>'/$repos}"; prompt="${prompt//'<RUNNER>'/$BIN}"
   log "supervising session $uuid for task $id; raw $raw"
   if [ "$DRY" = 1 ]; then log "(dry: no session started)"; : > "$raw"; return 0; fi
-  ( cd "$DIR" && export RUNNER_TASK_ID="$id" && source "$KIT/adapters/$adapter.sh" \
-      && A_PROMPT="$prompt" && A_MODEL="$model" && A_EFFORT=medium && A_TASK_ID="$id" && A_DIRS=("${dirs[@]}") \
-      && { [ "${AGENT_PRESET_SESSION:-0}" = 1 ] && A_SESSION="$uuid" || A_SESSION=""; } \
-      && adapter_start 2>&1 ) \
+  ( cd "$DIR" && export RUNNER_TASK_ID="$id" RUNNER_AGENT_PROMPT="$prompt" \
+      RUNNER_AGENT_MODEL="$model" RUNNER_AGENT_SESSION="$uuid" \
+      && python3 "$BIN/runner_watch.py" run --task "$id" --phase 'resolving a stopped task' -- zsh -c '
+        source "$RUNNER_CONF"; source "$1"; shift
+        A_PROMPT="$RUNNER_AGENT_PROMPT"; A_MODEL="$RUNNER_AGENT_MODEL"; A_EFFORT=medium
+        A_TASK_ID="$RUNNER_TASK_ID"; A_DIRS=("$@")
+        A_SESSION=""; [ "${AGENT_PRESET_SESSION:-0}" != 1 ] || A_SESSION="$RUNNER_AGENT_SESSION"
+        adapter_start
+      ' runner-supervisor "$KIT/adapters/$adapter.sh" "${dirs[@]}" 2>&1 ) \
     | tee "$raw" | python3 -u "$BIN/render_stream.py" | tee -a "$QLOG"
   SUPERVISE_VERDICT="$( source "$KIT/adapters/$adapter.sh"; adapter_read_result "$raw" SUPERVISOR; print -r -- "$RESULT_VERDICT" )"
 }
@@ -166,8 +179,23 @@ handle_stop() {
   local -a w logs ids
   if [ -s "$RUNS/$id.stop" ]; then stop="$(head -1 "$RUNS/$id.stop")"; else stop="RUNNER: blocked run_task.sh exit $rc"; fi
   log "task $id stopped (exit $rc): $stop"
+  if [ -f "$RUNS/oversight/yielded/$id.json" ]; then
+    { print 'origin-review'; print -r -- "$stop"; } > "$WAITING/$id"
+    log "task $id awaits its originating session; independent tasks remain eligible"
+    return 0
+  fi
+  local col="$(heading "$id" | sed -n 's/.*M: \([A-Z]\).*/\1/p')" av adapter
+  av="ADAPTER_$col"; adapter="${(P)av:-}"
+  if [ -f "$RUNS/available-$adapter" ]; then
+    log "task $id deferred until its provider is available; independent tasks remain eligible"
+    return 0
+  fi
   if heading "$id" | grep -q '\[~\]' && heading "$id" | grep -q 'R: owner'; then
     park "$id" "built, waits for the owner's yes at [~]"; return 0   # run_task.sh has already told the owner
+  fi
+  if [ "$rc" = 3 ] && [[ "$stop" == "RUNNER: question "* ]]; then
+    park "$id" "$stop"
+    return 0
   fi
   LAST_STOP="$id"
   rounds="$(cat "$RUNS/$id.rounds" 2>/dev/null || echo 0)"
@@ -180,6 +208,10 @@ handle_stop() {
   logs=("$RUNS"/$id-*.log(Nom)); tasklog="${logs[1]:-(no log)}"
   local before="$(decisions_hash)"   # an answer written while the stop session runs must still release the task
   supervise "$id" "$stop" "$tasklog"
+  if [ -f "$RUNS/oversight/yielded/$id.json" ]; then
+    { print 'origin-review'; print -r -- "$stop"; } > "$WAITING/$id"
+    return 0
+  fi
   verdict="$SUPERVISE_VERDICT"
   log "verdict: ${verdict:-(none)}"
   w=(${=verdict}); kind="${w[2]:-}"
@@ -233,9 +265,23 @@ one_pass() {
     esac
     if [ -f "$WAITING/$id" ]; then
       hash="$(head -1 "$WAITING/$id")"
+      if [ "$hash" = origin-review ]; then
+        if python3 - "$BIN" "$id" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from runner_watch import Watch, read
+w = Watch()
+yielded = read(w.root / 'yielded' / (sys.argv[2] + '.json'))
+r = read(w.root / 'reviews' / (yielded.get('event', '') + '.json'))
+sys.exit(0 if r.get('action') == 'continue' and r.get('origin') == w.identity() else 1)
+PY
+        then rm -f "$WAITING/$id" "$RUNS/oversight/yielded/$id.json"
+        else WAITING_IDS+=("$id"); continue; fi
+      else
       if [ "$hash" = "$(decisions_hash)" ]; then WAITING_IDS+=("$id"); continue; fi
       why="$(sed -n 2p "$WAITING/$id")"; rm -f "$WAITING/$id"
       log "task $id: DECISIONS.md changed since it was parked; trying it again"
+      fi
     else
       why=""
     fi
@@ -254,11 +300,16 @@ one_pass() {
       park "$id" "needs $need, which waits"; WAITING_IDS+=("$id")
       continue
     fi
+    local col="$(print -r -- "$head" | sed -n 's/.*M: \([A-Z]\).*/\1/p')" av adapter available
+    av="ADAPTER_$col"; adapter="${(P)av:-}"
+    available="$(cat "$RUNS/available-$adapter" 2>/dev/null || print 0)"
+    if [ "$available" -gt "$(date +%s)" ]; then continue; fi
+    rm -f "$RUNS/available-$adapter"
     log "task $id: running run_task.sh $id"
     if [ "$DRY" = 1 ]; then log "(dry: would run task $id)"; return 0; fi
     rm -f "$RUNS/$id.stop"
     local rc=0
-    "$BIN/run_task.sh" "$id" 2>"$RUNS/$id.err" || rc=$?
+    RUNNER_QUEUED=1 "$BIN/run_task.sh" "$id" 2>"$RUNS/$id.err" || rc=$?
     [ -s "$RUNS/$id.err" ] && cat "$RUNS/$id.err" >&2
     log "task $id: run_task.sh exit $rc"
     if [ $rc = 0 ]; then rm -f "$RUNS/$id.rounds" "$RUNS/$id.stop"
@@ -289,6 +340,7 @@ pause() {
 }
 
 main() {
+  [ "$DRY" = 1 ] || python3 "$BIN/runner_watch.py" check || return 2
   if ! mkdir "$LOCK" 2>/dev/null; then
     local pid="$(cat "$LOCK/pid" 2>/dev/null)"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -301,6 +353,7 @@ main() {
   trap 'rm -rf "$LOCK"; exit 130' INT TERM HUP
   [ -f "$STOPFILE" ] && { rm -f "$STOPFILE"; log "removed an old stop file"; }
   log "queue started (pid $$), queue file $ORDER"
+  [ "$DRY" = 1 ] || python3 "$BIN/runner_watch.py" event started --summary 'The runner has started work towards the goal.' --next 'The originating coding session will review progress and intervene when needed.'
   [ "$DRY" = 1 ] || ( python3 "$BIN/runner_report.py" --watch $$ --runs "$RUNS" --order "$ORDER" >/dev/null 2>&1 & )
   local idle_sent=0 n limit="${STOP_STREAK:-3}"
   local -aU streak=()
@@ -316,6 +369,7 @@ main() {
     else
       if [ $idle_sent = 0 ]; then
         notify "$PROJECT queue idle. Waiting: ${WAITING_IDS[*]:-none}."
+        [ "$DRY" = 1 ] || python3 "$BIN/runner_watch.py" event idle --summary 'No task is currently runnable. This does not prove the goal has been delivered.' --next 'Review waiting work and provider availability, or test the delivered goal as its intended user.'
         idle_sent=1
       fi
       [ "$ONCE" = 1 ] && break
@@ -325,6 +379,7 @@ main() {
     [ "$ONCE" = 1 ] && break
   done
   [ -f "$STOPFILE" ] && log "stop file found; queue stopped" || log "queue pass done (once)"
+  [ "$DRY" = 1 ] || python3 "$BIN/runner_watch.py" event stopped --summary 'The runner has stopped. Completed work is preserved.' --next 'The originating session must report any remaining work and delivery evidence.'
 }
 
 [[ "$ZSH_EVAL_CONTEXT" == toplevel ]] && main

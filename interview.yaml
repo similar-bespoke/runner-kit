@@ -20,11 +20,11 @@ questions:
   - id: builder_and_reviewer
     text: "Which agent and model build tasks by default, and which review them?"
     type: "for each letter in use: an adapter name and an exact model id; then a default builder letter and a default reviewer"
-    default: "Letter S for building at medium effort, letter O for review at high effort, both on the one agent that is signed in."
-    recommended: "Build on the agent's faster model (letter S), review on its strongest model (letter O), stop sessions on O. Give exact model ids, not aliases. Leave the letter of an agent that is not signed in with an empty model."
+    default: "Codex gpt-6.1-sol for both roles through the newer selected client: S medium for building and O high for review."
+    recommended: "The current owner selection is Codex gpt-6.1-sol for builders and reviewers through bin/runner-codex. Use S medium for building, O high for review and O for stop sessions. Another model requires the owner's explicit permission; never downgrade after a failure. CODEX_BIN selects the newer client if its desktop-bundled default is unavailable."
     detect:
       - "bin/runner-doctor lists each supported agent as installed and signed in, or not."
-      - "The installing agent usually knows the exact id of the model it is running on; offer that id and ask the owner to confirm it and to name the other one."
+      - "Reuse the owner-selected gpt-6.1-sol. Do not request that model decision again or copy an older guide's model recommendations. Verify the selected newer client and report an unavailable model as a blocker."
       - "The self-test proves the default builder's id: a wrong id fails line (b)."
     tell_the_owner: "Task sessions run unattended and may run shell commands in the named repositories without asking. For the claude adapter this is CLAUDE_ALLOWED_TOOLS (default Bash); it can be narrowed."
     fills:
@@ -45,7 +45,7 @@ questions:
     text: "How should the runner tell you that a task is done, stopped or waiting for you?"
     type: "one of: none, desktop, command (with the command)"
     default: "none"
-    recommended: "desktop on a machine you sit at; none on a server. A custom command (one that takes the message as its last argument) can be set later."
+    recommended: "Keep optional desktop notices as needed. Active originating-session oversight and Coding Coordinator use docs/supervision.md, not NOTIFY. Set GOAL, the actual ORIGIN_AGENT and ORIGIN_SESSION, SUPERVISION_REQUIRED=yes, the review intervals, COORDINATOR_CMD and ACCEPTANCE_CMD. Verify a supported recurring wake-up before unattended work. Never place webhook credentials in runner.conf."
     detect:
       - "command -v osascript or command -v notify-send shows whether a desktop notice is possible."
       - "With no display (no DISPLAY or WAYLAND_DISPLAY on Linux, or an ssh session), recommend none."
